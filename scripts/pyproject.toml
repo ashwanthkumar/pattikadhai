@@ -1,0 +1,6 @@
+[project]
+name = "pattikadhai-scripts"
+version = "0.1.0"
+description = "PattiKadhai audio scripts - see tts/ and music/ subdirectories"
+requires-python = ">=3.11,<3.13"
+dependencies = []

@@ -1,0 +1,16 @@
+[project]
+name = "pattikadhai-tts"
+version = "0.1.0"
+description = "PattiKadhai TTS script (Qwen3-TTS via mlx-audio)"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "mlx-audio>=0.3.0",
+    "soundfile",
+    "sounddevice",
+    "numpy",
+]
+
+[tool.uv]
+dev-dependencies = []
+environments = ["sys_platform == 'darwin' and platform_machine == 'arm64'"]
+prerelease = "allow"

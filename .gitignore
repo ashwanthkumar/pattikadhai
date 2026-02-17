@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+.venv/
+
+# Build output
+dist/
+target/
+
+# Python
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tauri
+src-tauri/target/
+
+# uv
+scripts/tts/.venv/
+scripts/music/.venv/
+
+# Models / large files
+*.wav
+*.mp3
+
+# App data
+stories/
