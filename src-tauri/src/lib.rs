@@ -31,6 +31,12 @@ fn migrations() -> Vec<Migration> {
             sql: include_str!("../migrations/004_app_settings.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 5,
+            description: "Migrate voice settings to Kokoro",
+            sql: include_str!("../migrations/005_kokoro_voice_settings.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 
@@ -47,17 +53,24 @@ pub fn run() {
                 .add_migrations("sqlite:pattikadhai.db", migrations())
                 .build(),
         )
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             let db_path = app.path().app_data_dir()?.join("pattikadhai.db");
             if db_path.exists() {
                 match rusqlite::Connection::open(&db_path) {
-                    Ok(conn) => match db::queries::reset_stale_audio_jobs(&conn) {
-                        Ok(()) => log::info!("Reset stale audio jobs on startup"),
-                        Err(e) => log::warn!("Failed to reset stale audio jobs: {e}"),
-                    },
-                    Err(e) => log::warn!("Failed to open DB for stale job reset: {e}"),
+                    Ok(conn) => {
+                        match db::queries::apply_rusqlite_migrations(&conn) {
+                            Ok(()) => log::info!("Applied rusqlite migrations on startup"),
+                            Err(e) => log::warn!("Failed to apply rusqlite migrations: {e}"),
+                        }
+                        match db::queries::reset_stale_audio_jobs(&conn) {
+                            Ok(()) => log::info!("Reset stale audio jobs on startup"),
+                            Err(e) => log::warn!("Failed to reset stale audio jobs: {e}"),
+                        }
+                    }
+                    Err(e) => log::warn!("Failed to open DB on startup: {e}"),
                 }
             }
             Ok(())
@@ -65,6 +78,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::health::check_dependency,
             commands::health::install_dependency,
+            commands::health::apply_migrations,
             commands::stories::generate_story_text,
             commands::stories::continue_story,
             commands::stories::get_story_detail,

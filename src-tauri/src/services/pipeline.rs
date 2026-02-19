@@ -2,11 +2,10 @@ use std::path::PathBuf;
 
 use crate::db::queries::VoiceSettings;
 use crate::services::mixer::AudioMixer;
-use crate::services::music::MusicService;
 use crate::services::tts::TtsService;
 use tauri::Emitter;
 
-const CHUNK_SIZE: usize = 2000;
+const CHUNK_SIZE: usize = 800;
 
 /// Merge paragraphs into chunks of approximately `CHUNK_SIZE` characters.
 /// Oversized paragraphs are split at sentence boundaries.
@@ -77,7 +76,6 @@ fn split_sentences(text: &str) -> Vec<&str> {
 
 pub struct AudioPipeline {
     tts: TtsService,
-    music: MusicService,
     audio_dir: PathBuf,
 }
 
@@ -93,34 +91,22 @@ impl AudioPipeline {
     pub fn new(scripts_dir: PathBuf, audio_dir: PathBuf, models_dir: PathBuf) -> Self {
         Self {
             tts: TtsService::new(scripts_dir.clone(), models_dir.clone()),
-            music: MusicService::new(scripts_dir, models_dir),
             audio_dir,
         }
     }
 
-    /// Run the full audio pipeline for a story part
+    /// Run the voice-only audio pipeline for a story part
     pub async fn process(
         &self,
         job_id: &str,
         part_id: &str,
         text: &str,
-        genre: &str,
         app_handle: &tauri::AppHandle,
         voice_settings: Option<&VoiceSettings>,
     ) -> Result<String, String> {
-        let voice_path = self
-            .audio_dir
-            .join(format!("{}_voice.wav", part_id))
-            .to_string_lossy()
-            .to_string();
-        let music_path = self
-            .audio_dir
-            .join(format!("{}_music.wav", part_id))
-            .to_string_lossy()
-            .to_string();
         let final_path = self
             .audio_dir
-            .join(format!("{}_final.mp3", part_id))
+            .join(format!("{}_final.wav", part_id))
             .to_string_lossy()
             .to_string();
 
@@ -142,10 +128,9 @@ impl AudioPipeline {
 
         // Extract voice settings
         let voice_name = voice_settings.map(|vs| vs.voice.as_str());
-        let seed = voice_settings.map(|vs| vs.seed);
-        let temperature = voice_settings.map(|vs| vs.temperature);
+        let speed = voice_settings.map(|vs| vs.speed);
 
-        // Merge paragraphs into ~2000-char chunks
+        // Merge paragraphs into ~800-char chunks
         let chunks = chunk_text(text);
 
         if chunks.len() > 1 {
@@ -156,56 +141,22 @@ impl AudioPipeline {
                     .join(format!("{}_chunk_{}.wav", part_id, i))
                     .to_string_lossy()
                     .to_string();
-                self.tts.generate(chunk, &chunk_path, voice_name, seed, temperature).await?;
+                self.tts.generate(chunk, &chunk_path, voice_name, speed).await?;
                 wav_paths.push(chunk_path);
             }
 
-            // Concat all chunks
+            // Concat all chunks into final_path
             let refs: Vec<&str> = wav_paths.iter().map(|s| s.as_str()).collect();
-            AudioMixer::concat_wav(&refs, &voice_path).await?;
+            AudioMixer::concat_wav(&refs, &final_path).await?;
 
             // Clean up chunk files
             for path in &wav_paths {
                 let _ = tokio::fs::remove_file(path).await;
             }
         } else {
-            self.tts.generate(text, &voice_path, voice_name, seed, temperature).await?;
+            // Single chunk: TTS writes directly to final_path
+            self.tts.generate(text, &final_path, voice_name, speed).await?;
         }
-
-        // Emit music generation start
-        let _ = app_handle.emit(
-            "audio-progress",
-            PipelineProgress {
-                job_id: job_id.to_string(),
-                stage: "music_generating".to_string(),
-                progress: 0.4,
-                error: None,
-            },
-        );
-
-        // Estimate duration (rough: 150 words per minute)
-        let word_count = text.split_whitespace().count() as u32;
-        let duration_secs = (word_count * 60 / 150).max(30);
-
-        // Generate music
-        let caption = format!("gentle children's {} music, soft and calming", genre);
-        self.music
-            .generate(&caption, duration_secs, &music_path)
-            .await?;
-
-        // Emit mixing start
-        let _ = app_handle.emit(
-            "audio-progress",
-            PipelineProgress {
-                job_id: job_id.to_string(),
-                stage: "mixing".to_string(),
-                progress: 0.7,
-                error: None,
-            },
-        );
-
-        // Mix voice + music
-        AudioMixer::mix(&voice_path, &music_path, &final_path).await?;
 
         // Emit completion
         let _ = app_handle.emit(
@@ -234,10 +185,10 @@ mod tests {
 
     #[test]
     fn audio_path_is_deterministic() {
-        let path1 = audio_path_for_part("/audio", "part-123", "final.mp3");
-        let path2 = audio_path_for_part("/audio", "part-123", "final.mp3");
+        let path1 = audio_path_for_part("/audio", "part-123", "final.wav");
+        let path2 = audio_path_for_part("/audio", "part-123", "final.wav");
         assert_eq!(path1, path2);
-        assert_eq!(path1, "/audio/part-123_final.mp3");
+        assert_eq!(path1, "/audio/part-123_final.wav");
     }
 
     #[test]

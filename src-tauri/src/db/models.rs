@@ -38,7 +38,6 @@ pub struct AudioJob {
     pub id: String,
     pub story_part_id: String,
     pub voice_path: Option<String>,
-    pub music_path: Option<String>,
     pub final_path: Option<String>,
     pub status: String,
     pub error_message: Option<String>,

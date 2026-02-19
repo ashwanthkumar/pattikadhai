@@ -1,5 +1,7 @@
+use crate::db::queries;
 use crate::services::health::{self, DependencyStatus};
 use crate::services::process::run_and_stream;
+use tauri::Manager;
 
 #[tauri::command]
 pub async fn check_dependency(name: String, app: tauri::AppHandle) -> Result<DependencyStatus, String> {
@@ -17,14 +19,6 @@ pub async fn check_dependency(name: String, app: tauri::AppHandle) -> Result<Dep
             let scripts_dir = super::resolve_scripts_dir(&app);
             let models_dir = super::resolve_models_dir();
             Ok(health::check_tts_model(
-                scripts_dir.to_str().unwrap(),
-                models_dir.to_str().unwrap(),
-            ).await)
-        }
-        "music_model" => {
-            let scripts_dir = super::resolve_scripts_dir(&app);
-            let models_dir = super::resolve_models_dir();
-            Ok(health::check_music_model(
                 scripts_dir.to_str().unwrap(),
                 models_dir.to_str().unwrap(),
             ).await)
@@ -75,64 +69,24 @@ pub async fn install_dependency(name: String, app: tauri::AppHandle) -> Result<I
                 output: if output.is_empty() { "Completed".to_string() } else { output },
             });
         }
-        "music_model" => {
-            let models_dir = super::resolve_models_dir();
-            let checkpoints_dir = models_dir.join("acestep").join("checkpoints");
-            std::fs::create_dir_all(&checkpoints_dir)
-                .map_err(|e| format!("Failed to create checkpoints dir: {}", e))?;
-
-            let music_dir = scripts_dir.join("music");
-            log::info!("Downloading music model to: {}", checkpoints_dir.display());
-
-            let (success, output) = run_and_stream(
-                tokio::process::Command::new("uv")
-                    .args([
-                        "run", "--project", music_dir.to_str().unwrap(),
-                        "python",
-                        music_dir.join("download_model.py").to_str().unwrap(),
-                        "--checkpoints-dir", checkpoints_dir.to_str().unwrap(),
-                    ]),
-                "music_model",
-            ).await?;
-
-            return Ok(InstallResult {
-                success,
-                output: if output.is_empty() { "Completed".to_string() } else { output },
-            });
-        }
         "python_deps" => {
-            // Sync both TTS and music venvs separately
             let tts_dir = scripts_dir.join("tts");
-            let music_dir = scripts_dir.join("music");
 
             log::info!("Syncing TTS deps at: {}", tts_dir.display());
-            let (tts_ok, tts_log) = run_and_stream(
+            let (success, output) = run_and_stream(
                 tokio::process::Command::new("uv")
                     .args(["sync", "--project", tts_dir.to_str().unwrap()]),
                 "python_deps:tts",
             ).await?;
 
-            log::info!("Syncing music deps at: {}", music_dir.display());
-            let (music_ok, music_log) = run_and_stream(
-                tokio::process::Command::new("uv")
-                    .args(["sync", "--project", music_dir.to_str().unwrap()]),
-                "python_deps:music",
-            ).await?;
-
-            let combined = format!(
-                "=== TTS deps ===\n{}\n=== Music deps ===\n{}",
-                tts_log, music_log
-            ).trim().to_string();
-            let success = tts_ok && music_ok;
-
             log::info!("Install python_deps finished: success={}", success);
 
             return Ok(InstallResult {
                 success,
-                output: if combined.is_empty() {
+                output: if output.is_empty() {
                     "Completed with no output".to_string()
                 } else {
-                    combined
+                    output
                 },
             });
         }
@@ -158,3 +112,19 @@ pub async fn install_dependency(name: String, app: tauri::AppHandle) -> Result<I
     })
 }
 
+#[tauri::command]
+pub async fn apply_migrations(app: tauri::AppHandle) -> Result<String, String> {
+    let db_path = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?
+        .join("pattikadhai.db");
+
+    let conn = rusqlite::Connection::open(&db_path)
+        .map_err(|e| format!("Failed to open DB: {}", e))?;
+
+    queries::apply_rusqlite_migrations(&conn)
+        .map_err(|e| format!("Migration failed: {}", e))?;
+
+    Ok("Migrations applied successfully".to_string())
+}

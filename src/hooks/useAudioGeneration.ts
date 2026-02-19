@@ -7,8 +7,6 @@ import type { PipelineProgress } from "@/types";
 type AudioStage =
   | "idle"
   | "voice_generating"
-  | "music_generating"
-  | "mixing"
   | "complete"
   | "failed";
 
@@ -37,7 +35,7 @@ export function useAudioGeneration() {
   }, [jobId]);
 
   const startGeneration = useCallback(
-    async (partId: string, text: string, genre: string) => {
+    async (partId: string, text: string) => {
       const newJobId = crypto.randomUUID();
       setJobId(newJobId);
       setStage("voice_generating");
@@ -47,7 +45,7 @@ export function useAudioGeneration() {
 
       try {
         await createAudioJob(newJobId, partId);
-        await startAudioGeneration(newJobId, partId, text, genre);
+        await startAudioGeneration(newJobId, partId, text);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         setError(msg);

@@ -6,7 +6,6 @@ import { Music } from "lucide-react";
 interface AudioGeneratorProps {
   partId: string;
   text: string;
-  genre: string;
   audioPath: string | null;
   title?: string;
 }
@@ -14,7 +13,6 @@ interface AudioGeneratorProps {
 export function AudioGenerator({
   partId,
   text,
-  genre,
   audioPath,
   title,
 }: AudioGeneratorProps) {
@@ -35,7 +33,7 @@ export function AudioGenerator({
 
   return (
     <button
-      onClick={() => startGeneration(partId, text, genre)}
+      onClick={() => startGeneration(partId, text)}
       className="flex items-center gap-2 rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground hover:border-primary hover:text-primary"
     >
       <Music className="h-4 w-4" />

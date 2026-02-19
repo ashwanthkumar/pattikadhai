@@ -9,8 +9,6 @@ export const GENRE_ICONS: Record<string, string> = {
 
 export const AUDIO_STAGES = [
   { key: "voice_generating", label: "Generating Voice" },
-  { key: "music_generating", label: "Creating Music" },
-  { key: "mixing", label: "Mixing Audio" },
   { key: "complete", label: "Done" },
 ] as const;
 
@@ -22,16 +20,11 @@ export const DEPENDENCY_STEPS = [
   {
     name: "python_deps",
     label: "Python ML deps",
-    description: "mlx-audio & ACE-Step libraries",
+    description: "mlx-audio TTS library",
   },
   {
     name: "tts_model",
     label: "TTS Model",
-    description: "Qwen3-TTS voice model (~1.2 GB)",
-  },
-  {
-    name: "music_model",
-    label: "Music Model",
-    description: "ACE-Step music model (~5-8 GB)",
+    description: "Kokoro voice model (~355 MB)",
   },
 ] as const;

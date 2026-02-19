@@ -37,13 +37,10 @@ export interface AudioJob {
   id: string;
   story_part_id: string;
   voice_path: string | null;
-  music_path: string | null;
   final_path: string | null;
   status:
     | "pending"
     | "voice_generating"
-    | "music_generating"
-    | "mixing"
     | "complete"
     | "failed";
   error_message: string | null;

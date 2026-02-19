@@ -53,14 +53,16 @@ export async function startAudioGeneration(
   jobId: string,
   partId: string,
   text: string,
-  genre: string,
 ): Promise<{ job_id: string; status: string }> {
   return invoke("start_audio_generation", {
     jobId,
     partId,
     text,
-    genre,
   });
+}
+
+export async function applyMigrations(): Promise<string> {
+  return invoke<string>("apply_migrations");
 }
 
 export async function getAudioJobStatus(

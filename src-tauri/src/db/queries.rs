@@ -1,19 +1,25 @@
 use rusqlite::{params, Connection, Result};
 
+/// Apply rusqlite-side migrations that may not be covered by tauri-plugin-sql.
+/// Each migration is idempotent so safe to re-run.
+pub fn apply_rusqlite_migrations(conn: &Connection) -> Result<()> {
+    // Migration 5: Kokoro voice settings
+    conn.execute_batch(include_str!("../../migrations/005_kokoro_voice_settings.sql"))?;
+    Ok(())
+}
+
 pub struct VoiceSettings {
     pub voice: String,
-    pub seed: u64,
-    pub temperature: f64,
+    pub speed: f64,
 }
 
 /// Read TTS voice settings from app_settings table
 pub fn get_voice_settings(conn: &Connection) -> Result<VoiceSettings> {
-    let mut voice = "Vivian".to_string();
-    let mut seed: u64 = 42;
-    let mut temperature: f64 = 0.3;
+    let mut voice = "af_nova".to_string();
+    let mut speed: f64 = 1.0;
 
     let mut stmt = conn.prepare(
-        "SELECT key, value FROM app_settings WHERE key IN ('tts_voice', 'tts_seed', 'tts_temperature')",
+        "SELECT key, value FROM app_settings WHERE key IN ('tts_voice', 'tts_speed')",
     )?;
     let rows = stmt.query_map([], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
@@ -23,16 +29,14 @@ pub fn get_voice_settings(conn: &Connection) -> Result<VoiceSettings> {
         let (key, value) = row?;
         match key.as_str() {
             "tts_voice" => voice = value,
-            "tts_seed" => seed = value.parse().unwrap_or(42),
-            "tts_temperature" => temperature = value.parse().unwrap_or(0.3),
+            "tts_speed" => speed = value.parse().unwrap_or(1.0),
             _ => {}
         }
     }
 
     Ok(VoiceSettings {
         voice,
-        seed,
-        temperature,
+        speed,
     })
 }
 
@@ -55,12 +59,11 @@ pub fn update_audio_job_paths(
     conn: &Connection,
     job_id: &str,
     voice_path: Option<&str>,
-    music_path: Option<&str>,
     final_path: Option<&str>,
 ) -> Result<()> {
     conn.execute(
-        "UPDATE audio_jobs SET voice_path = ?1, music_path = ?2, final_path = ?3, updated_at = datetime('now') WHERE id = ?4",
-        params![voice_path, music_path, final_path, job_id],
+        "UPDATE audio_jobs SET voice_path = ?1, final_path = ?2, updated_at = datetime('now') WHERE id = ?3",
+        params![voice_path, final_path, job_id],
     )?;
     Ok(())
 }
@@ -69,7 +72,7 @@ pub fn update_audio_job_paths(
 /// This handles the case where the app was closed or crashed mid-generation.
 pub fn reset_stale_audio_jobs(conn: &Connection) -> Result<()> {
     conn.execute(
-        "UPDATE audio_jobs SET status = 'failed', error_message = 'Interrupted by app restart', updated_at = datetime('now') WHERE status IN ('pending', 'voice_generating', 'music_generating', 'mixing')",
+        "UPDATE audio_jobs SET status = 'failed', error_message = 'Interrupted by app restart', updated_at = datetime('now') WHERE status IN ('pending', 'voice_generating')",
         [],
     )?;
     conn.execute(
@@ -105,7 +108,6 @@ mod tests {
                 id TEXT PRIMARY KEY,
                 story_part_id TEXT NOT NULL,
                 voice_path TEXT,
-                music_path TEXT,
                 final_path TEXT,
                 status TEXT NOT NULL DEFAULT 'pending',
                 error_message TEXT,
@@ -134,7 +136,6 @@ mod tests {
                 id TEXT PRIMARY KEY,
                 story_part_id TEXT NOT NULL,
                 voice_path TEXT,
-                music_path TEXT,
                 final_path TEXT,
                 status TEXT NOT NULL DEFAULT 'pending',
                 error_message TEXT,
@@ -149,21 +150,19 @@ mod tests {
             &conn,
             "job1",
             Some("/voice.wav"),
-            Some("/music.wav"),
-            Some("/final.mp3"),
+            Some("/final.wav"),
         )
         .unwrap();
 
-        let (voice, music, final_p): (Option<String>, Option<String>, Option<String>) = conn
+        let (voice, final_p): (Option<String>, Option<String>) = conn
             .query_row(
-                "SELECT voice_path, music_path, final_path FROM audio_jobs WHERE id = 'job1'",
+                "SELECT voice_path, final_path FROM audio_jobs WHERE id = 'job1'",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .unwrap();
         assert_eq!(voice.unwrap(), "/voice.wav");
-        assert_eq!(music.unwrap(), "/music.wav");
-        assert_eq!(final_p.unwrap(), "/final.mp3");
+        assert_eq!(final_p.unwrap(), "/final.wav");
     }
 
     #[test]
@@ -174,7 +173,6 @@ mod tests {
                 id TEXT PRIMARY KEY,
                 story_part_id TEXT NOT NULL,
                 voice_path TEXT,
-                music_path TEXT,
                 final_path TEXT,
                 status TEXT NOT NULL DEFAULT 'pending',
                 error_message TEXT,
@@ -189,9 +187,8 @@ mod tests {
             );
             INSERT INTO audio_jobs (id, story_part_id, status) VALUES ('j1', 'p1', 'pending');
             INSERT INTO audio_jobs (id, story_part_id, status) VALUES ('j2', 'p2', 'voice_generating');
-            INSERT INTO audio_jobs (id, story_part_id, status) VALUES ('j3', 'p3', 'music_generating');
-            INSERT INTO audio_jobs (id, story_part_id, status) VALUES ('j4', 'p4', 'mixing');
-            INSERT INTO audio_jobs (id, story_part_id, status) VALUES ('j5', 'p5', 'completed');
+            INSERT INTO audio_jobs (id, story_part_id, status) VALUES ('j3', 'p3', 'complete');
+            INSERT INTO audio_jobs (id, story_part_id, status) VALUES ('j4', 'p4', 'failed');
             INSERT INTO story_parts (id, status) VALUES ('p1', 'audio_processing');
             INSERT INTO story_parts (id, status) VALUES ('p2', 'audio_processing');
             INSERT INTO story_parts (id, status) VALUES ('p3', 'audio_ready');
@@ -201,8 +198,8 @@ mod tests {
 
         reset_stale_audio_jobs(&conn).unwrap();
 
-        // All in-progress jobs should be failed
-        for job_id in &["j1", "j2", "j3", "j4"] {
+        // In-progress jobs (pending, voice_generating) should be failed
+        for job_id in &["j1", "j2"] {
             let (status, error): (String, Option<String>) = conn
                 .query_row(
                     "SELECT status, error_message FROM audio_jobs WHERE id = ?1",
@@ -214,13 +211,21 @@ mod tests {
             assert_eq!(error.unwrap(), "Interrupted by app restart");
         }
 
-        // Completed job should be untouched
+        // Complete job should be untouched
         let status: String = conn
-            .query_row("SELECT status FROM audio_jobs WHERE id = 'j5'", [], |row| {
+            .query_row("SELECT status FROM audio_jobs WHERE id = 'j3'", [], |row| {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(status, "completed");
+        assert_eq!(status, "complete");
+
+        // Already-failed job should be untouched (error_message stays null)
+        let status: String = conn
+            .query_row("SELECT status FROM audio_jobs WHERE id = 'j4'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(status, "failed");
 
         // audio_processing story parts should be audio_failed
         for part_id in &["p1", "p2"] {
@@ -250,36 +255,33 @@ mod tests {
         assert_eq!(status, "text_ready");
     }
 
+    /// Apply both migrations 004 + 005 to set up app_settings in test DB
+    fn setup_app_settings(conn: &Connection) {
+        conn.execute_batch(include_str!("../../migrations/004_app_settings.sql")).unwrap();
+        conn.execute_batch(include_str!("../../migrations/005_kokoro_voice_settings.sql")).unwrap();
+    }
+
     #[test]
     fn test_get_voice_settings_defaults() {
         let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(include_str!("../../migrations/004_app_settings.sql"))
-            .unwrap();
+        setup_app_settings(&conn);
 
         let settings = get_voice_settings(&conn).unwrap();
-        assert_eq!(settings.voice, "Vivian");
-        assert_eq!(settings.seed, 42);
-        assert!((settings.temperature - 0.3).abs() < f64::EPSILON);
+        assert_eq!(settings.voice, "af_nova");
+        assert!((settings.speed - 1.0).abs() < f64::EPSILON);
     }
 
     #[test]
     fn test_get_voice_settings_custom() {
         let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(include_str!("../../migrations/004_app_settings.sql"))
-            .unwrap();
+        setup_app_settings(&conn);
         conn.execute(
-            "UPDATE app_settings SET value = '99' WHERE key = 'tts_seed'",
-            [],
-        )
-        .unwrap();
-        conn.execute(
-            "UPDATE app_settings SET value = '0.7' WHERE key = 'tts_temperature'",
+            "UPDATE app_settings SET value = '1.5' WHERE key = 'tts_speed'",
             [],
         )
         .unwrap();
 
         let settings = get_voice_settings(&conn).unwrap();
-        assert_eq!(settings.seed, 99);
-        assert!((settings.temperature - 0.7).abs() < f64::EPSILON);
+        assert!((settings.speed - 1.5).abs() < f64::EPSILON);
     }
 }

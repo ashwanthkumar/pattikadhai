@@ -37,8 +37,8 @@ describe("GENRE_ICONS", () => {
 });
 
 describe("AUDIO_STAGES", () => {
-  it("has 4 stages", () => {
-    expect(AUDIO_STAGES).toHaveLength(4);
+  it("has 2 stages", () => {
+    expect(AUDIO_STAGES).toHaveLength(2);
   });
 
   it("ends with complete", () => {
@@ -52,8 +52,8 @@ describe("AUDIO_STAGES", () => {
 });
 
 describe("DEPENDENCY_STEPS", () => {
-  it("has 5 steps", () => {
-    expect(DEPENDENCY_STEPS).toHaveLength(5);
+  it("has 6 steps", () => {
+    expect(DEPENDENCY_STEPS).toHaveLength(6);
   });
 
   it("all steps have required fields", () => {
@@ -111,7 +111,7 @@ describe("Type shapes (property-based)", () => {
   });
 
   it("Audio job status transitions are valid", () => {
-    const validStatuses = ["pending", "voice_generating", "music_generating", "mixing", "complete", "failed"];
+    const validStatuses = ["pending", "voice_generating", "complete", "failed"];
     fc.assert(
       fc.property(
         fc.constantFrom(...validStatuses),

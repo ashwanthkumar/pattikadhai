@@ -151,8 +151,7 @@ export async function getAudioJobForPart(
 // Settings queries
 export interface VoiceSettingsData {
   tts_voice: string;
-  tts_seed: string;
-  tts_temperature: string;
+  tts_speed: string;
 }
 
 export async function getVoiceSettings(): Promise<VoiceSettingsData> {
@@ -161,9 +160,8 @@ export async function getVoiceSettings(): Promise<VoiceSettingsData> {
     "SELECT key, value FROM app_settings WHERE key LIKE 'tts_%'",
   );
   const settings: VoiceSettingsData = {
-    tts_voice: "Vivian",
-    tts_seed: "42",
-    tts_temperature: "0.3",
+    tts_voice: "af_nova",
+    tts_speed: "1.0",
   };
   for (const row of rows) {
     if (row.key in settings) {

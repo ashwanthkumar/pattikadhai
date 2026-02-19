@@ -16,7 +16,6 @@ pub async fn start_audio_generation(
     job_id: String,
     part_id: String,
     text: String,
-    genre: String,
     app: tauri::AppHandle,
 ) -> Result<AudioJobInfo, String> {
     let app_clone = app.clone();
@@ -50,7 +49,7 @@ pub async fn start_audio_generation(
         };
 
         match pipeline
-            .process(&job_id_clone, &part_id_clone, &text, &genre, &app_clone, voice_settings.as_ref())
+            .process(&job_id_clone, &part_id_clone, &text, &app_clone, voice_settings.as_ref())
             .await
         {
             Ok(final_path) => {
@@ -64,7 +63,6 @@ pub async fn start_audio_generation(
                     let _ = queries::update_audio_job_paths(
                         &conn,
                         &job_id_clone,
-                        None,
                         None,
                         Some(&final_path),
                     );
@@ -125,19 +123,18 @@ pub async fn get_audio_job_status(
         .map_err(|e| format!("Failed to open DB: {}", e))?;
 
     let result = conn.query_row(
-        "SELECT id, story_part_id, voice_path, music_path, final_path, status, error_message, created_at, updated_at FROM audio_jobs WHERE id = ?1",
+        "SELECT id, story_part_id, voice_path, final_path, status, error_message, created_at, updated_at FROM audio_jobs WHERE id = ?1",
         [&job_id],
         |row| {
             Ok(AudioJob {
                 id: row.get(0)?,
                 story_part_id: row.get(1)?,
                 voice_path: row.get(2)?,
-                music_path: row.get(3)?,
-                final_path: row.get(4)?,
-                status: row.get(5)?,
-                error_message: row.get(6)?,
-                created_at: row.get(7)?,
-                updated_at: row.get(8)?,
+                final_path: row.get(3)?,
+                status: row.get(4)?,
+                error_message: row.get(5)?,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
             })
         },
     ).map_err(|e| format!("Job not found: {}", e))?;

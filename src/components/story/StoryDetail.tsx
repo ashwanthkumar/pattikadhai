@@ -10,7 +10,7 @@ import {
   X,
   Loader2,
 } from "lucide-react";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { getAudioUrl } from "@/lib/audio";
 import { cn } from "@/lib/utils";
 import { useStory, useStoryParts, useGenres } from "@/hooks/useDatabase";
 import { useStoryGeneration } from "@/hooks/useStoryGeneration";
@@ -109,7 +109,7 @@ export function StoryDetail({ storyId, onBack }: StoryDetailProps) {
   const handleGenerateAudio = async (part: StoryPart) => {
     if (!genre) return;
     setAudioPartId(part.id);
-    await startGeneration(part.id, part.content, genre.name);
+    await startGeneration(part.id, part.content);
   };
 
   const handleAddContinuation = async () => {
@@ -309,16 +309,7 @@ export function StoryDetail({ storyId, onBack }: StoryDetailProps) {
 
                       {/* Audio player */}
                       {part.audio_path && (
-                        <div className="flex flex-col gap-1">
-                          <span className="text-xs font-medium text-muted-foreground">
-                            Audio
-                          </span>
-                          <audio
-                            controls
-                            src={convertFileSrc(part.audio_path)}
-                            className="w-full"
-                          />
-                        </div>
+                        <AudioPlayer path={part.audio_path} />
                       )}
 
                       {/* Audio generation progress */}
@@ -482,6 +473,23 @@ export function StoryDetail({ storyId, onBack }: StoryDetailProps) {
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+function AudioPlayer({ path }: { path: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    getAudioUrl(path).then(setSrc);
+  }, [path]);
+
+  if (!src) return null;
+
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs font-medium text-muted-foreground">Audio</span>
+      <audio controls src={src} className="w-full" />
     </div>
   );
 }

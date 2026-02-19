@@ -3,30 +3,38 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useVoiceSettings } from "@/hooks/useVoiceSettings";
+import { applyMigrations } from "@/lib/api";
+
+const VOICE_PRESETS = [
+  { value: "af_nova", label: "Nova (storytelling)" },
+  { value: "bf_emma", label: "Emma (narration)" },
+  { value: "af_heart", label: "Heart (warm)" },
+  { value: "af_bella", label: "Bella" },
+  { value: "am_adam", label: "Adam" },
+  { value: "am_michael", label: "Michael" },
+  { value: "bm_george", label: "George" },
+];
 
 export function VoiceSettings() {
   const { settings, loading, saving, save } = useVoiceSettings();
   const [voice, setVoice] = useState(settings.tts_voice);
-  const [seed, setSeed] = useState(settings.tts_seed);
-  const [temperature, setTemperature] = useState(settings.tts_temperature);
+  const [speed, setSpeed] = useState(settings.tts_speed);
   const [saved, setSaved] = useState(false);
+  const [migrationStatus, setMigrationStatus] = useState<"running" | "done" | "error" | null>(null);
 
   useEffect(() => {
     setVoice(settings.tts_voice);
-    setSeed(settings.tts_seed);
-    setTemperature(settings.tts_temperature);
+    setSpeed(settings.tts_speed);
   }, [settings]);
 
   const hasChanges =
     voice !== settings.tts_voice ||
-    seed !== settings.tts_seed ||
-    temperature !== settings.tts_temperature;
+    speed !== settings.tts_speed;
 
   const handleSave = async () => {
     await save({
       tts_voice: voice,
-      tts_seed: seed,
-      tts_temperature: temperature,
+      tts_speed: speed,
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -48,8 +56,7 @@ export function VoiceSettings() {
         <CardHeader>
           <CardTitle>Voice Generation</CardTitle>
           <CardDescription>
-            Configure text-to-speech settings. Using a fixed seed and low
-            temperature ensures consistent voice across audio chunks.
+            Configure text-to-speech settings using Kokoro TTS.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -57,50 +64,39 @@ export function VoiceSettings() {
             <label className="text-sm font-medium" htmlFor="voice">
               Voice
             </label>
-            <Input
+            <select
               id="voice"
               value={voice}
-              disabled
-              className="bg-muted"
-            />
+              onChange={(e) => setVoice(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {VOICE_PRESETS.map((preset) => (
+                <option key={preset.value} value={preset.value}>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
             <p className="text-xs text-muted-foreground">
-              Voice name is fixed to the model's default speaker.
+              Choose a voice preset. Nova and Emma work best for storytelling.
             </p>
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="seed">
-              Random Seed
+            <label className="text-sm font-medium" htmlFor="speed">
+              Speed
             </label>
             <Input
-              id="seed"
+              id="speed"
               type="number"
-              min={0}
-              value={seed}
-              onChange={(e) => setSeed(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Same seed produces the same voice characteristics. Change to get a
-              different voice variant.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="temperature">
-              Temperature
-            </label>
-            <Input
-              id="temperature"
-              type="number"
-              min={0}
-              max={1}
+              min={0.5}
+              max={2.0}
               step={0.1}
-              value={temperature}
-              onChange={(e) => setTemperature(e.target.value)}
+              value={speed}
+              onChange={(e) => setSpeed(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Lower values (0.1-0.3) produce more consistent voice. Higher
-              values add more variation.
+              Speech speed multiplier. 1.0 is normal, lower is slower, higher is
+              faster.
             </p>
           </div>
 
@@ -112,6 +108,62 @@ export function VoiceSettings() {
               <span className="text-sm text-green-600">Settings saved</span>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Database</CardTitle>
+          <CardDescription>
+            Apply pending database migrations to ensure settings are up to date.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            onClick={async () => {
+              setMigrationStatus("running");
+              try {
+                await applyMigrations();
+                setMigrationStatus("done");
+                setTimeout(() => setMigrationStatus(null), 2000);
+                // Reload voice settings after migration
+                window.location.reload();
+              } catch {
+                setMigrationStatus("error");
+                setTimeout(() => setMigrationStatus(null), 3000);
+              }
+            }}
+            disabled={migrationStatus === "running"}
+          >
+            {migrationStatus === "running" ? "Applying..." : "Apply Migrations"}
+          </Button>
+          {migrationStatus === "done" && (
+            <span className="text-sm text-green-600">Migrations applied</span>
+          )}
+          {migrationStatus === "error" && (
+            <span className="text-sm text-red-600">Migration failed</span>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Setup</CardTitle>
+          <CardDescription>
+            Re-run the setup wizard to check or install dependencies.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button
+            variant="outline"
+            onClick={() => {
+              localStorage.removeItem("pattikadhai_setup_complete");
+              window.location.reload();
+            }}
+          >
+            Re-run Setup Wizard
+          </Button>
         </CardContent>
       </Card>
     </div>

@@ -12,18 +12,16 @@ impl TtsService {
         Self { scripts_dir, models_dir }
     }
 
-    /// Generate speech audio from text using Qwen3-TTS via mlx-audio
+    /// Generate speech audio from text using Kokoro TTS via mlx-audio
     pub async fn generate(
         &self,
         text: &str,
         output_path: &str,
         voice: Option<&str>,
-        seed: Option<u64>,
-        temperature: Option<f64>,
+        speed: Option<f64>,
     ) -> Result<String, String> {
-        let voice = voice.unwrap_or("Vivian");
-        let seed_str = seed.unwrap_or(42).to_string();
-        let temp_str = temperature.unwrap_or(0.3).to_string();
+        let voice = voice.unwrap_or("af_nova");
+        let speed_str = speed.unwrap_or(1.0).to_string();
 
         let tts_dir = self.scripts_dir.join("tts");
         let hf_home = self.models_dir.join("huggingface");
@@ -41,10 +39,8 @@ impl TtsService {
                     output_path,
                     "--voice",
                     voice,
-                    "--seed",
-                    &seed_str,
-                    "--temperature",
-                    &temp_str,
+                    "--speed",
+                    &speed_str,
                 ])
                 .env("HF_HOME", hf_home.to_str().unwrap()),
             "tts",

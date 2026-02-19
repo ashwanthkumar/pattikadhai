@@ -1,8 +1,7 @@
-import { useRef } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { useRef, useState, useEffect } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { Play, Pause, Download } from "lucide-react";
-import { useState } from "react";
+import { getAudioUrl } from "@/lib/audio";
 
 interface StoryPlayerProps {
   audioPath: string;
@@ -12,8 +11,11 @@ interface StoryPlayerProps {
 export function StoryPlayer({ audioPath, title }: StoryPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
+  const [audioSrc, setAudioSrc] = useState<string | null>(null);
 
-  const audioSrc = convertFileSrc(audioPath);
+  useEffect(() => {
+    getAudioUrl(audioPath).then(setAudioSrc);
+  }, [audioPath]);
 
   const togglePlay = () => {
     if (!audioRef.current) return;
@@ -31,11 +33,11 @@ export function StoryPlayer({ audioPath, title }: StoryPlayerProps) {
       filters: [{ name: "Audio", extensions: ["mp3"] }],
     });
     if (savePath) {
-      // Copy file to save location
-      // In Tauri, we'd use fs plugin but for now we can use a command
       console.log("Export to:", savePath);
     }
   };
+
+  if (!audioSrc) return null;
 
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3">
@@ -59,13 +61,13 @@ export function StoryPlayer({ audioPath, title }: StoryPlayerProps) {
 
       <div className="flex-1">
         <div className="text-sm font-medium">{title ?? "Story Audio"}</div>
-        <div className="text-xs text-muted-foreground">MP3 Audio</div>
+        <div className="text-xs text-muted-foreground">WAV Audio</div>
       </div>
 
       <button
         onClick={handleExport}
         className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-secondary"
-        title="Export MP3"
+        title="Export audio"
       >
         <Download className="h-4 w-4 text-muted-foreground" />
       </button>

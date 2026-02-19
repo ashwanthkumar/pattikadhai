@@ -148,38 +148,9 @@ pub async fn check_tts_model(scripts_dir: &str, models_dir: &str) -> DependencyS
     }
 }
 
-pub async fn check_music_model(scripts_dir: &str, models_dir: &str) -> DependencyStatus {
-    let music_dir = format!("{}/music", scripts_dir);
-    let checkpoints_dir = format!("{}/acestep/checkpoints", models_dir);
-
-    let ok = tokio::process::Command::new("uv")
-        .args([
-            "run", "--frozen", "--project", &music_dir,
-            "python",
-            &format!("{}/check_model.py", music_dir),
-            "--checkpoints-dir", &checkpoints_dir,
-        ])
-        .output()
-        .await
-        .map(|o| {
-            o.status.success()
-                && String::from_utf8_lossy(&o.stdout).trim() == "installed"
-        })
-        .unwrap_or(false);
-
-    DependencyStatus {
-        name: "Music Model".to_string(),
-        installed: ok,
-        version: if ok { Some("Downloaded".to_string()) } else { None },
-        install_command: "Download via setup wizard".to_string(),
-    }
-}
-
 pub async fn check_python_deps(scripts_dir: &str) -> DependencyStatus {
     let tts_dir = format!("{}/tts", scripts_dir);
-    let music_dir = format!("{}/music", scripts_dir);
 
-    // Check TTS deps (mlx-audio with Qwen3-TTS)
     let tts_ok = tokio::process::Command::new("uv")
         .args([
             "run", "--frozen", "--project", &tts_dir,
@@ -190,35 +161,10 @@ pub async fn check_python_deps(scripts_dir: &str) -> DependencyStatus {
         .map(|o| o.status.success())
         .unwrap_or(false);
 
-    // Check music deps (ACE-Step)
-    let music_ok = tokio::process::Command::new("uv")
-        .args([
-            "run", "--frozen", "--project", &music_dir,
-            "python", "-c", "from acestep.handler import AceStepHandler; print('ok')",
-        ])
-        .output()
-        .await
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-
-    let installed = tts_ok && music_ok;
-    let version = if installed {
-        Some("Installed".to_string())
-    } else if tts_ok {
-        Some("TTS ok, music missing".to_string())
-    } else if music_ok {
-        Some("Music ok, TTS missing".to_string())
-    } else {
-        None
-    };
-
     DependencyStatus {
         name: "Python ML deps".to_string(),
-        installed,
-        version,
-        install_command: format!(
-            "uv sync --project {} && uv sync --project {}",
-            tts_dir, music_dir
-        ),
+        installed: tts_ok,
+        version: if tts_ok { Some("Installed".to_string()) } else { None },
+        install_command: format!("uv sync --project {}", tts_dir),
     }
 }

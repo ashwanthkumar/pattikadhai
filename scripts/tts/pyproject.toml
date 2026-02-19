@@ -1,16 +1,22 @@
 [project]
 name = "pattikadhai-tts"
 version = "0.1.0"
-description = "PattiKadhai TTS script (Qwen3-TTS via mlx-audio)"
+description = "PattiKadhai TTS script (Kokoro via mlx-audio)"
 requires-python = ">=3.11,<3.13"
 dependencies = [
     "mlx-audio>=0.3.0",
+    "misaki[en]",
     "soundfile",
     "sounddevice",
-    "numpy",
+    "numpy>=2.0",
+    "pip",
 ]
 
 [tool.uv]
 dev-dependencies = []
 environments = ["sys_platform == 'darwin' and platform_machine == 'arm64'"]
 prerelease = "allow"
+# Pin spacy to stable 3.x (prerelease=allow pulls 4.0.0.dev3 which is broken)
+override-dependencies = ["spacy>=3.8,<4"]
+# Build C extensions from source to link against numpy 2.x
+no-binary-package = ["spacy", "thinc", "blis"]
