@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { BookOpen, PenLine, Settings } from "lucide-react";
+import { BookOpen, PenLine, Settings, Sun, Moon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StoryLibrary } from "@/components/story/StoryLibrary";
 import { StoryGenerator } from "@/components/story/StoryGenerator";
 import { StoryDetail } from "@/components/story/StoryDetail";
 import { VoiceSettings } from "@/components/settings/VoiceSettings";
+import { useTheme } from "@/hooks/useTheme";
+import pattiAvatar from "@/assets/patti-avatar.jpeg";
 
 type Page = "library" | "create" | "story-detail" | "settings";
 
@@ -23,19 +25,27 @@ const navItems: NavItem[] = [
 export function AppShell() {
   const [page, setPage] = useState<Page>("library");
   const [selectedStoryId, setSelectedStoryId] = useState<string | null>(null);
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background">
       {/* Sidebar */}
       <aside className="flex w-64 flex-col border-r border-sidebar-border bg-sidebar-background">
         {/* App branding */}
-        <div className="flex flex-col gap-0.5 px-6 py-6">
-          <h1 className="text-2xl font-bold tracking-tight text-primary">
-            PattiKadhai
-          </h1>
-          <span className="text-xs font-medium text-muted-foreground">
-            Grandmother's Stories
-          </span>
+        <div className="flex items-center gap-3 px-6 py-6">
+          <img
+            src={pattiAvatar}
+            alt="Patti"
+            className="h-11 w-11 rounded-full object-cover ring-2 ring-primary/20"
+          />
+          <div className="flex flex-col gap-0.5">
+            <h1 className="text-2xl font-bold tracking-tight text-primary">
+              PattiKadhai
+            </h1>
+            <span className="text-xs font-medium text-muted-foreground">
+              Grandmother's Stories
+            </span>
+          </div>
         </div>
 
         {/* Navigation */}
@@ -65,10 +75,25 @@ export function AppShell() {
         </nav>
 
         {/* Footer */}
-        <div className="px-6 py-4">
+        <div className="flex items-center justify-between px-6 py-4">
           <p className="text-[10px] text-muted-foreground">
             Stories crafted with love
           </p>
+          <button
+            onClick={toggleTheme}
+            className={cn(
+              "flex h-7 w-7 items-center justify-center rounded-lg",
+              "text-muted-foreground transition-colors",
+              "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+            )}
+            title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+          >
+            {theme === "light" ? (
+              <Moon className="h-3.5 w-3.5" />
+            ) : (
+              <Sun className="h-3.5 w-3.5" />
+            )}
+          </button>
         </div>
       </aside>
 

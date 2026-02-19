@@ -1,6 +1,7 @@
 import { Plus, BookOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useStories, useGenres } from "@/hooks/useDatabase";
+import pattiAvatar from "@/assets/patti-avatar.jpeg";
 
 interface StoryLibraryProps {
   onSelectStory: (id: string) => void;
@@ -47,9 +48,11 @@ export function StoryLibrary({
     return (
       <div className="flex h-full items-center justify-center p-16">
         <div className="flex max-w-md flex-col items-center gap-6 text-center">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-secondary">
-            <BookOpen className="h-10 w-10 text-primary" />
-          </div>
+          <img
+            src={pattiAvatar}
+            alt="Patti"
+            className="h-24 w-24 rounded-full object-cover ring-4 ring-primary/20"
+          />
           <div className="flex flex-col gap-2">
             <h2 className="text-2xl font-bold text-foreground">
               Your story library is empty
@@ -151,8 +154,8 @@ export function StoryLibrary({
                   className={cn(
                     "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
                     story.status === "complete"
-                      ? "bg-green-100 text-green-800"
-                      : "bg-amber-100 text-amber-800",
+                      ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
+                      : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
                   )}
                 >
                   {story.status === "complete" ? "Complete" : "Draft"}
