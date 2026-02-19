@@ -5,6 +5,7 @@ import { GenreSelector } from "@/components/story/GenreSelector";
 import { useStoryGeneration } from "@/hooks/useStoryGeneration";
 import { createStory, createStoryPart } from "@/lib/database";
 import type { Genre } from "@/types";
+import pattiAvatar from "@/assets/patti-avatar.jpeg";
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -187,19 +188,29 @@ export function StoryGenerator({ onSave }: StoryGeneratorProps) {
 
       {step === 3 && (
         <div className="flex flex-col gap-6">
-          <div>
-            <h2 className="text-xl font-bold text-foreground">
-              {state === "generating"
-                ? "Writing your story..."
-                : state === "complete"
-                  ? "Story is ready!"
-                  : "Generation"}
-            </h2>
-            {state === "generating" && (
-              <p className="mt-1 text-sm text-muted-foreground">
-                The AI is crafting a wonderful tale. Sit back and enjoy!
-              </p>
-            )}
+          <div className="flex items-center gap-4">
+            <img
+              src={pattiAvatar}
+              alt="Patti"
+              className={cn(
+                "h-14 w-14 rounded-full object-cover ring-2 ring-primary/20",
+                state === "generating" && "animate-pulse",
+              )}
+            />
+            <div>
+              <h2 className="text-xl font-bold text-foreground">
+                {state === "generating"
+                  ? "Patti is telling a story..."
+                  : state === "complete"
+                    ? "Patti's story is ready!"
+                    : "Generation"}
+              </h2>
+              {state === "generating" && (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Sit back and enjoy the tale!
+                </p>
+              )}
+            </div>
           </div>
 
           {error && (
