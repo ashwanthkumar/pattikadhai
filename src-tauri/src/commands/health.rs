@@ -1,6 +1,7 @@
 use crate::db::queries;
 use crate::services::health::{self, DependencyStatus};
 use crate::services::process::run_and_stream;
+use crate::services::tts::espeak_library_path;
 use tauri::Manager;
 
 #[tauri::command]
@@ -53,14 +54,18 @@ pub async fn install_dependency(name: String, app: tauri::AppHandle) -> Result<I
             let tts_dir = scripts_dir.join("tts");
             log::info!("Downloading TTS model to: {}", hf_home.display());
 
+            let mut cmd = tokio::process::Command::new("uv");
+            cmd.args([
+                    "run", "--project", tts_dir.to_str().unwrap(),
+                    "python",
+                    tts_dir.join("download_model.py").to_str().unwrap(),
+                ])
+                .env("HF_HOME", hf_home.to_str().unwrap());
+            if let Some(lib) = espeak_library_path() {
+                cmd.env("PHONEMIZER_ESPEAK_LIBRARY", lib);
+            }
             let (success, output) = run_and_stream(
-                tokio::process::Command::new("uv")
-                    .args([
-                        "run", "--project", tts_dir.to_str().unwrap(),
-                        "python",
-                        tts_dir.join("download_model.py").to_str().unwrap(),
-                    ])
-                    .env("HF_HOME", hf_home.to_str().unwrap()),
+                &mut cmd,
                 "tts_model",
             ).await?;
 

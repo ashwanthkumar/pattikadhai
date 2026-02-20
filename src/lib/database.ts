@@ -151,17 +151,15 @@ export async function getAudioJobForPart(
 // Settings queries
 export interface VoiceSettingsData {
   tts_voice: string;
-  tts_speed: string;
 }
 
 export async function getVoiceSettings(): Promise<VoiceSettingsData> {
   const conn = await getDb();
   const rows = await conn.select<{ key: string; value: string }[]>(
-    "SELECT key, value FROM app_settings WHERE key LIKE 'tts_%'",
+    "SELECT key, value FROM app_settings WHERE key = 'tts_voice'",
   );
   const settings: VoiceSettingsData = {
-    tts_voice: "af_nova",
-    tts_speed: "1.0",
+    tts_voice: "Luna",
   };
   for (const row of rows) {
     if (row.key in settings) {

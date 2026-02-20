@@ -1,50 +1,27 @@
 #!/usr/bin/env python3
-"""Generate speech audio from text using Kokoro TTS via mlx-audio."""
+"""Generate speech audio from text using KittenTTS."""
 
 import argparse
-import os
 import sys
 
-# Suppress "PyTorch was not found" warning from transformers —
-# mlx-audio uses MLX as its backend, not PyTorch.
-os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
+from config import MODEL_ID, DEFAULT_VOICE
 
 
 def main():
     parser = argparse.ArgumentParser(description="Generate TTS audio")
     parser.add_argument("--text", required=True, help="Text to speak")
     parser.add_argument("--output", required=True, help="Output WAV file path")
-    parser.add_argument("--voice", default="af_nova", help="Voice preset (default: af_nova)")
-    parser.add_argument("--speed", type=float, default=1.0, help="Speech speed multiplier (default: 1.0)")
+    parser.add_argument("--voice", default=DEFAULT_VOICE, help=f"Voice preset (default: {DEFAULT_VOICE})")
     args = parser.parse_args()
 
     try:
-        from mlx_audio.tts.utils import load_model
+        from kittentts import KittenTTS
         import soundfile as sf
-        import numpy as np
 
-        model = load_model("mlx-community/Kokoro-82M-bf16")
+        tts = KittenTTS(MODEL_ID)
+        audio = tts.generate(text=args.text, voice=args.voice)
 
-        audio_chunks = []
-        sample_rate = 24000
-        for result in model.generate(
-            text=args.text,
-            voice=args.voice,
-            speed=args.speed,
-        ):
-            print("Generated audio chunk.", file=sys.stderr, flush=True)
-            chunk = result.audio
-            if hasattr(chunk, 'tolist'):
-                chunk = np.array(chunk.tolist(), dtype=np.float32)
-            audio_chunks.append(chunk)
-            sample_rate = getattr(result, 'sr', 24000)
-
-        if not audio_chunks:
-            print("Error: No audio generated", file=sys.stderr)
-            sys.exit(1)
-
-        audio_data = np.concatenate(audio_chunks) if len(audio_chunks) > 1 else audio_chunks[0]
-        sf.write(args.output, audio_data, sample_rate)
+        sf.write(args.output, audio, 24000)
         print(f"Audio saved to {args.output}")
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)

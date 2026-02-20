@@ -40,6 +40,13 @@ export function StoryDetail({ storyId, onBack }: StoryDetailProps) {
       setExpandedParts(new Set(parts.map((p) => p.id)));
     }
   }, [parts]);
+
+  // Re-fetch parts when audio generation completes so audio_path is available
+  useEffect(() => {
+    if (audioStage === "complete") {
+      refreshParts();
+    }
+  }, [audioStage, refreshParts]);
   const [editingPartId, setEditingPartId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);

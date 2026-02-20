@@ -125,13 +125,18 @@ pub async fn check_tts_model(scripts_dir: &str, models_dir: &str) -> DependencyS
     let tts_dir = format!("{}/tts", scripts_dir);
     let hf_home = format!("{}/huggingface", models_dir);
 
-    let ok = tokio::process::Command::new("uv")
-        .args([
+    let mut cmd = tokio::process::Command::new("uv");
+    cmd.args([
             "run", "--frozen", "--project", &tts_dir,
             "python",
             &format!("{}/check_model.py", tts_dir),
         ])
-        .env("HF_HOME", &hf_home)
+        .env("HF_HOME", &hf_home);
+    if let Some(lib) = super::tts::espeak_library_path() {
+        cmd.env("PHONEMIZER_ESPEAK_LIBRARY", lib);
+    }
+
+    let ok = cmd
         .output()
         .await
         .map(|o| {
@@ -151,11 +156,16 @@ pub async fn check_tts_model(scripts_dir: &str, models_dir: &str) -> DependencyS
 pub async fn check_python_deps(scripts_dir: &str) -> DependencyStatus {
     let tts_dir = format!("{}/tts", scripts_dir);
 
-    let tts_ok = tokio::process::Command::new("uv")
-        .args([
+    let mut cmd = tokio::process::Command::new("uv");
+    cmd.args([
             "run", "--frozen", "--project", &tts_dir,
-            "python", "-c", "from mlx_audio.tts.utils import load_model; print('ok')",
-        ])
+            "python", "-c", "import kittentts; print('ok')",
+        ]);
+    if let Some(lib) = super::tts::espeak_library_path() {
+        cmd.env("PHONEMIZER_ESPEAK_LIBRARY", lib);
+    }
+
+    let tts_ok = cmd
         .output()
         .await
         .map(|o| o.status.success())

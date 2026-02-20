@@ -44,9 +44,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
         </div>
 
         <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30 p-4 mb-4 text-sm text-amber-800 dark:text-amber-200">
-          <p className="font-medium">Disk space required: ~4-6 GB total</p>
+          <p className="font-medium">Disk space required: ~3-4 GB total</p>
           <p className="mt-1 text-amber-700 dark:text-amber-300 text-xs">
-            Gemma 3 (~2.5 GB) + TTS model (~1.2 GB) + Python env (~1 GB)
+            Gemma 3 (~2.5 GB) + TTS model (~80 MB) + Python env (~200 MB)
           </p>
         </div>
 

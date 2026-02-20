@@ -20,11 +20,11 @@ export const DEPENDENCY_STEPS = [
   {
     name: "python_deps",
     label: "Python ML deps",
-    description: "mlx-audio TTS library",
+    description: "KittenTTS library",
   },
   {
     name: "tts_model",
     label: "TTS Model",
-    description: "Kokoro voice model (~355 MB)",
+    description: "KittenTTS voice model (~80 MB)",
   },
 ] as const;

@@ -7,8 +7,7 @@ import {
 
 export function useVoiceSettings() {
   const [settings, setSettings] = useState<VoiceSettingsData>({
-    tts_voice: "af_nova",
-    tts_speed: "1.0",
+    tts_voice: "Luna",
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

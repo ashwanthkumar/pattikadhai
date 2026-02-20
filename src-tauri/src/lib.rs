@@ -37,6 +37,12 @@ fn migrations() -> Vec<Migration> {
             sql: include_str!("../migrations/005_kokoro_voice_settings.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 6,
+            description: "Migrate voice settings to KittenTTS",
+            sql: include_str!("../migrations/006_kittentts_voice_settings.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 
