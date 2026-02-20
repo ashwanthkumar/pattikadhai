@@ -88,9 +88,9 @@ pub struct PipelineProgress {
 }
 
 impl AudioPipeline {
-    pub fn new(scripts_dir: PathBuf, audio_dir: PathBuf, models_dir: PathBuf) -> Self {
+    pub fn new(audio_dir: PathBuf, models_dir: PathBuf) -> Self {
         Self {
-            tts: TtsService::new(scripts_dir.clone(), models_dir.clone()),
+            tts: TtsService::new(models_dir),
             audio_dir,
         }
     }
@@ -128,6 +128,7 @@ impl AudioPipeline {
 
         // Extract voice settings
         let voice_name = voice_settings.map(|vs| vs.voice.as_str());
+        let speed = voice_settings.and_then(|vs| vs.speed);
 
         // Merge paragraphs into ~800-char chunks
         let chunks = chunk_text(text);
@@ -140,7 +141,7 @@ impl AudioPipeline {
                     .join(format!("{}_chunk_{}.wav", part_id, i))
                     .to_string_lossy()
                     .to_string();
-                self.tts.generate(chunk, &chunk_path, voice_name).await?;
+                self.tts.generate(chunk, &chunk_path, voice_name, speed).await?;
                 wav_paths.push(chunk_path);
             }
 
@@ -154,7 +155,7 @@ impl AudioPipeline {
             }
         } else {
             // Single chunk: TTS writes directly to final_path
-            self.tts.generate(text, &final_path, voice_name).await?;
+            self.tts.generate(text, &final_path, voice_name, speed).await?;
         }
 
         // Emit completion

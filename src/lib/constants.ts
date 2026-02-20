@@ -15,16 +15,15 @@ export const AUDIO_STAGES = [
 export const DEPENDENCY_STEPS = [
   { name: "ollama", label: "Ollama", description: "Local AI model server" },
   { name: "gemma3", label: "Gemma 3", description: "Story generation model" },
-  { name: "uv", label: "uv", description: "Python package manager" },
   { name: "ffmpeg", label: "ffmpeg", description: "Audio processing tool" },
   {
-    name: "python_deps",
-    label: "Python ML deps",
-    description: "KittenTTS library",
+    name: "espeak_ng",
+    label: "espeak-ng",
+    description: "Phonemization engine",
   },
   {
     name: "tts_model",
     label: "TTS Model",
-    description: "KittenTTS voice model (~80 MB)",
+    description: "Kokoro voice model (~115 MB)",
   },
 ] as const;

@@ -52,8 +52,8 @@ describe("AUDIO_STAGES", () => {
 });
 
 describe("DEPENDENCY_STEPS", () => {
-  it("has 6 steps", () => {
-    expect(DEPENDENCY_STEPS).toHaveLength(6);
+  it("has 5 steps", () => {
+    expect(DEPENDENCY_STEPS).toHaveLength(5);
   });
 
   it("all steps have required fields", () => {

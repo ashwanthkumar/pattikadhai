@@ -33,6 +33,19 @@ export function StoryDetail({ storyId, onBack }: StoryDetailProps) {
   const { genres } = useGenres();
 
   const [expandedParts, setExpandedParts] = useState<Set<string>>(new Set());
+  const [editingPartId, setEditingPartId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  // Audio generation state
+  const {
+    stage: audioStage,
+    progress: audioProgress,
+    error: audioError,
+    startGeneration,
+    reset: _resetAudio,
+  } = useAudioGeneration();
+  const [audioPartId, setAudioPartId] = useState<string | null>(null);
 
   // Auto-expand all parts once loaded
   useEffect(() => {
@@ -47,19 +60,6 @@ export function StoryDetail({ storyId, onBack }: StoryDetailProps) {
       refreshParts();
     }
   }, [audioStage, refreshParts]);
-  const [editingPartId, setEditingPartId] = useState<string | null>(null);
-  const [editText, setEditText] = useState("");
-  const [savingEdit, setSavingEdit] = useState(false);
-
-  // Audio generation state
-  const {
-    stage: audioStage,
-    progress: audioProgress,
-    error: audioError,
-    startGeneration,
-    reset: _resetAudio,
-  } = useAudioGeneration();
-  const [audioPartId, setAudioPartId] = useState<string | null>(null);
 
   // Continuation generation state
   const {
@@ -375,7 +375,7 @@ export function StoryDetail({ storyId, onBack }: StoryDetailProps) {
                           Edit
                         </button>
 
-                        {(part.status === "text_ready" || part.status === "audio_failed") && !isAudioGenerating && (
+                        {(part.status === "text_ready" || part.status === "audio_failed" || part.status === "audio_ready") && !isAudioGenerating && (
                           <button
                             onClick={() => handleGenerateAudio(part)}
                             className={cn(
@@ -385,7 +385,7 @@ export function StoryDetail({ storyId, onBack }: StoryDetailProps) {
                             )}
                           >
                             <Volume2 className="h-3 w-3" />
-                            Generate Audio
+                            {part.status === "audio_ready" ? "Regenerate Audio" : "Generate Audio"}
                           </button>
                         )}
                       </div>

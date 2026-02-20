@@ -7,29 +7,38 @@ pub fn apply_rusqlite_migrations(conn: &Connection) -> Result<()> {
     conn.execute_batch(include_str!("../../migrations/005_kokoro_voice_settings.sql"))?;
     // Migration 6: KittenTTS voice settings
     conn.execute_batch(include_str!("../../migrations/006_kittentts_voice_settings.sql"))?;
+    // Migration 7: Back to Kokoro ONNX voice settings
+    conn.execute_batch(include_str!("../../migrations/007_kokoro_onnx_voice_settings.sql"))?;
     Ok(())
 }
 
 pub struct VoiceSettings {
     pub voice: String,
+    pub speed: Option<f32>,
 }
 
 /// Read TTS voice settings from app_settings table
 pub fn get_voice_settings(conn: &Connection) -> Result<VoiceSettings> {
-    let mut voice = "Luna".to_string();
+    let mut voice = "af_nova".to_string();
+    let mut speed: Option<f32> = None;
 
     let mut stmt = conn.prepare(
-        "SELECT value FROM app_settings WHERE key = 'tts_voice'",
+        "SELECT key, value FROM app_settings WHERE key IN ('tts_voice', 'tts_speed')",
     )?;
     let rows = stmt.query_map([], |row| {
-        row.get::<_, String>(0)
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
     })?;
 
     for row in rows {
-        voice = row?;
+        let (key, value) = row?;
+        match key.as_str() {
+            "tts_voice" => voice = value,
+            "tts_speed" => speed = value.parse().ok(),
+            _ => {}
+        }
     }
 
-    Ok(VoiceSettings { voice })
+    Ok(VoiceSettings { voice, speed })
 }
 
 /// Update audio job status (used from background Tokio tasks)
@@ -247,11 +256,12 @@ mod tests {
         assert_eq!(status, "text_ready");
     }
 
-    /// Apply migrations 004 + 005 + 006 to set up app_settings in test DB
+    /// Apply all migrations to set up app_settings in test DB
     fn setup_app_settings(conn: &Connection) {
         conn.execute_batch(include_str!("../../migrations/004_app_settings.sql")).unwrap();
         conn.execute_batch(include_str!("../../migrations/005_kokoro_voice_settings.sql")).unwrap();
         conn.execute_batch(include_str!("../../migrations/006_kittentts_voice_settings.sql")).unwrap();
+        conn.execute_batch(include_str!("../../migrations/007_kokoro_onnx_voice_settings.sql")).unwrap();
     }
 
     #[test]
@@ -260,7 +270,8 @@ mod tests {
         setup_app_settings(&conn);
 
         let settings = get_voice_settings(&conn).unwrap();
-        assert_eq!(settings.voice, "Luna");
+        assert_eq!(settings.voice, "af_nova");
+        assert_eq!(settings.speed, Some(1.0));
     }
 
     #[test]
@@ -268,12 +279,12 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         setup_app_settings(&conn);
         conn.execute(
-            "UPDATE app_settings SET value = 'Kiki' WHERE key = 'tts_voice'",
+            "UPDATE app_settings SET value = 'bf_emma' WHERE key = 'tts_voice'",
             [],
         )
         .unwrap();
 
         let settings = get_voice_settings(&conn).unwrap();
-        assert_eq!(settings.voice, "Kiki");
+        assert_eq!(settings.voice, "bf_emma");
     }
 }

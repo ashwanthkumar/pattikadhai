@@ -16,11 +16,11 @@ function App() {
 
       // Even if localStorage says complete, verify critical deps are still present
       try {
-        const [ttsModel, pythonDeps] = await Promise.all([
+        const [ttsModel, espeakNg] = await Promise.all([
           checkDependency("tts_model"),
-          checkDependency("python_deps"),
+          checkDependency("espeak_ng"),
         ]);
-        if (!ttsModel.installed || !pythonDeps.installed) {
+        if (!ttsModel.installed || !espeakNg.installed) {
           localStorage.removeItem("pattikadhai_setup_complete");
           setSetupComplete(false);
           return;

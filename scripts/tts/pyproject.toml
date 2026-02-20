@@ -1,9 +1,0 @@
-[project]
-name = "pattikadhai-tts"
-version = "0.1.0"
-description = "PattiKadhai TTS script (KittenTTS)"
-requires-python = ">=3.12,<3.13"
-dependencies = [
-    "kittentts @ git+https://github.com/KittenML/KittenTTS.git@0.8",
-    "soundfile",
-]

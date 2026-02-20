@@ -23,6 +23,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 thiserror = "2"
 log = "0.4"
 dirs = "5"
+kokoro-tts = { path = "../crates/kokoro-tts" }
 tauri-plugin-log = "2.8.0"
 tauri-plugin-fs = "2.4.5"
 

@@ -1,0 +1,15 @@
+[package]
+name = "kokoro-tts"
+version = "0.1.0"
+edition = "2021"
+description = "Kokoro-82M TTS via ONNX Runtime"
+
+[dependencies]
+ort = "2.0.0-rc.11"
+hound = "3.5"
+zip = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+log = "0.4"
+misaki-rs = { version = "0.3", default-features = false }

@@ -30,14 +30,12 @@ pub async fn start_audio_generation(
     let audio_dir = app_data_dir.join("audio");
     let db_path = app_data_dir.join("pattikadhai.db");
 
-    let scripts_dir = super::resolve_scripts_dir(&app);
     let models_dir = super::resolve_models_dir();
-    log::info!("Audio pipeline scripts dir: {}", scripts_dir.display());
     log::info!("Audio pipeline models dir: {}", models_dir.display());
 
     // Spawn background task
     tokio::spawn(async move {
-        let pipeline = AudioPipeline::new(scripts_dir, audio_dir, models_dir);
+        let pipeline = AudioPipeline::new(audio_dir, models_dir);
 
         // Read voice settings and update job status
         let voice_settings = if let Ok(conn) = Connection::open(&db_path) {

@@ -80,26 +80,6 @@ pub async fn check_gemma3() -> DependencyStatus {
     }
 }
 
-pub fn check_uv() -> DependencyStatus {
-    match Command::new("uv").arg("--version").output() {
-        Ok(output) if output.status.success() => {
-            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            DependencyStatus {
-                name: "uv".to_string(),
-                installed: true,
-                version: Some(version),
-                install_command: "brew install uv".to_string(),
-            }
-        }
-        _ => DependencyStatus {
-            name: "uv".to_string(),
-            installed: false,
-            version: None,
-            install_command: "brew install uv".to_string(),
-        },
-    }
-}
-
 pub fn check_ffmpeg() -> DependencyStatus {
     match Command::new("ffmpeg").arg("-version").output() {
         Ok(output) if output.status.success() => {
@@ -121,60 +101,43 @@ pub fn check_ffmpeg() -> DependencyStatus {
     }
 }
 
-pub async fn check_tts_model(scripts_dir: &str, models_dir: &str) -> DependencyStatus {
-    let tts_dir = format!("{}/tts", scripts_dir);
-    let hf_home = format!("{}/huggingface", models_dir);
-
-    let mut cmd = tokio::process::Command::new("uv");
-    cmd.args([
-            "run", "--frozen", "--project", &tts_dir,
-            "python",
-            &format!("{}/check_model.py", tts_dir),
-        ])
-        .env("HF_HOME", &hf_home);
-    if let Some(lib) = super::tts::espeak_library_path() {
-        cmd.env("PHONEMIZER_ESPEAK_LIBRARY", lib);
+pub fn check_espeak_ng() -> DependencyStatus {
+    match Command::new("espeak-ng").arg("--version").output() {
+        Ok(output) if output.status.success() => {
+            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            DependencyStatus {
+                name: "espeak-ng".to_string(),
+                installed: true,
+                version: Some(version),
+                install_command: "brew install espeak-ng".to_string(),
+            }
+        }
+        _ => DependencyStatus {
+            name: "espeak-ng".to_string(),
+            installed: false,
+            version: None,
+            install_command: "brew install espeak-ng".to_string(),
+        },
     }
+}
 
-    let ok = cmd
-        .output()
-        .await
-        .map(|o| {
-            o.status.success()
-                && String::from_utf8_lossy(&o.stdout).trim() == "installed"
-        })
-        .unwrap_or(false);
+pub fn check_tts_model(models_dir: &str) -> DependencyStatus {
+    let kokoro_dir = std::path::Path::new(models_dir).join("kokoro");
+    let model_exists = kokoro_dir.join("model_quantized.onnx").exists();
+    let voices_dir = kokoro_dir.join("voices");
+    // Check that the voices directory exists and has at least one .bin file
+    let voices_exist = voices_dir.is_dir()
+        && std::fs::read_dir(&voices_dir)
+            .map(|entries| entries.filter_map(|e| e.ok()).any(|e| {
+                e.path().extension().and_then(|ext| ext.to_str()) == Some("bin")
+            }))
+            .unwrap_or(false);
+    let ok = model_exists && voices_exist;
 
     DependencyStatus {
         name: "TTS Model".to_string(),
         installed: ok,
         version: if ok { Some("Downloaded".to_string()) } else { None },
         install_command: "Download via setup wizard".to_string(),
-    }
-}
-
-pub async fn check_python_deps(scripts_dir: &str) -> DependencyStatus {
-    let tts_dir = format!("{}/tts", scripts_dir);
-
-    let mut cmd = tokio::process::Command::new("uv");
-    cmd.args([
-            "run", "--frozen", "--project", &tts_dir,
-            "python", "-c", "import kittentts; print('ok')",
-        ]);
-    if let Some(lib) = super::tts::espeak_library_path() {
-        cmd.env("PHONEMIZER_ESPEAK_LIBRARY", lib);
-    }
-
-    let tts_ok = cmd
-        .output()
-        .await
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-
-    DependencyStatus {
-        name: "Python ML deps".to_string(),
-        installed: tts_ok,
-        version: if tts_ok { Some("Installed".to_string()) } else { None },
-        install_command: format!("uv sync --project {}", tts_dir),
     }
 }

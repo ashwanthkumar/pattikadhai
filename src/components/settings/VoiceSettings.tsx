@@ -5,31 +5,38 @@ import { useVoiceSettings } from "@/hooks/useVoiceSettings";
 import { applyMigrations } from "@/lib/api";
 
 const VOICE_PRESETS = [
-  { value: "Luna", label: "Luna (storytelling)" },
-  { value: "Rosie", label: "Rosie (narration)" },
-  { value: "Kiki", label: "Kiki (warm)" },
-  { value: "Bella", label: "Bella" },
-  { value: "Jasper", label: "Jasper" },
-  { value: "Hugo", label: "Hugo" },
-  { value: "Bruno", label: "Bruno" },
-  { value: "Leo", label: "Leo" },
+  { value: "af_nova", label: "Nova (storytelling)" },
+  { value: "bf_emma", label: "Emma (narration)" },
+  { value: "af_heart", label: "Heart (warm)" },
+  { value: "af_bella", label: "Bella" },
+  { value: "af_jessica", label: "Jessica" },
+  { value: "af_sarah", label: "Sarah" },
+  { value: "af_sky", label: "Sky" },
+  { value: "am_adam", label: "Adam" },
+  { value: "am_michael", label: "Michael" },
+  { value: "bm_george", label: "George" },
+  { value: "bf_lily", label: "Lily" },
+  { value: "am_echo", label: "Echo" },
 ];
 
 export function VoiceSettings() {
   const { settings, loading, saving, save } = useVoiceSettings();
   const [voice, setVoice] = useState(settings.tts_voice);
+  const [speed, setSpeed] = useState(settings.tts_speed);
   const [saved, setSaved] = useState(false);
   const [migrationStatus, setMigrationStatus] = useState<"running" | "done" | "error" | null>(null);
 
   useEffect(() => {
     setVoice(settings.tts_voice);
+    setSpeed(settings.tts_speed);
   }, [settings]);
 
-  const hasChanges = voice !== settings.tts_voice;
+  const hasChanges = voice !== settings.tts_voice || speed !== settings.tts_speed;
 
   const handleSave = async () => {
     await save({
       tts_voice: voice,
+      tts_speed: speed,
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -51,7 +58,7 @@ export function VoiceSettings() {
         <CardHeader>
           <CardTitle>Voice Generation</CardTitle>
           <CardDescription>
-            Configure text-to-speech settings using KittenTTS.
+            Configure text-to-speech settings using Kokoro-82M.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -72,7 +79,26 @@ export function VoiceSettings() {
               ))}
             </select>
             <p className="text-xs text-muted-foreground">
-              Choose a voice preset. Luna and Rosie work best for storytelling.
+              Choose a voice preset. Nova and Emma work best for storytelling.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium" htmlFor="speed">
+              Speed: {speed}x
+            </label>
+            <input
+              id="speed"
+              type="range"
+              min="0.5"
+              max="2.0"
+              step="0.1"
+              value={speed}
+              onChange={(e) => setSpeed(e.target.value)}
+              className="w-full"
+            />
+            <p className="text-xs text-muted-foreground">
+              Adjust speech speed. 1.0 is normal.
             </p>
           </div>
 
