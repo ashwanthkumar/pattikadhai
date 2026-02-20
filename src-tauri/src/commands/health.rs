@@ -7,7 +7,7 @@ use tauri::Manager;
 pub async fn check_dependency(name: String, _app: tauri::AppHandle) -> Result<DependencyStatus, String> {
     match name.as_str() {
         "ollama" => Ok(health::check_ollama().await),
-        "gemma3" => Ok(health::check_gemma3().await),
+        "gemma3:4b" => Ok(health::check_gemma3().await),
         "ffmpeg" => Ok(health::check_ffmpeg()),
         "espeak_ng" => Ok(health::check_espeak_ng()),
         "tts_model" => {
@@ -30,7 +30,7 @@ pub async fn install_dependency(name: String, _app: tauri::AppHandle) -> Result<
 
     let (program, args): (&str, Vec<String>) = match name.as_str() {
         "ollama" => ("brew", vec!["install".into(), "ollama".into()]),
-        "gemma3" => ("ollama", vec!["pull".into(), "gemma3".into()]),
+        "gemma3:4b" => ("ollama", vec!["pull".into(), "gemma3:4b".into()]),
         "ffmpeg" => ("brew", vec!["install".into(), "ffmpeg".into()]),
         "espeak_ng" => ("brew", vec!["install".into(), "espeak-ng".into()]),
         "tts_model" => {

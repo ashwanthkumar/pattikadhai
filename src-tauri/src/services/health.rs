@@ -51,7 +51,7 @@ pub async fn check_gemma3() -> DependencyStatus {
             }
 
             if let Ok(tags) = response.json::<TagsResponse>().await {
-                let has_gemma = tags.models.iter().any(|m| m.name.starts_with("gemma3"));
+                let has_gemma = tags.models.iter().any(|m| m.name.starts_with("gemma3:4b"));
                 DependencyStatus {
                     name: "Gemma 3".to_string(),
                     installed: has_gemma,

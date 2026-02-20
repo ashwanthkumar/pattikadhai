@@ -14,7 +14,7 @@ export const AUDIO_STAGES = [
 
 export const DEPENDENCY_STEPS = [
   { name: "ollama", label: "Ollama", description: "Local AI model server" },
-  { name: "gemma3", label: "Gemma 3", description: "Story generation model" },
+  { name: "gemma3:4b", label: "Gemma 3 4B", description: "Story generation model" },
   { name: "ffmpeg", label: "ffmpeg", description: "Audio processing tool" },
   {
     name: "espeak_ng",

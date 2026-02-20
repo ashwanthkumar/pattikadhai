@@ -12,12 +12,13 @@ pub async fn generate_story_text(
     title_hint: Option<String>,
     on_token: Channel<StoryToken>,
 ) -> Result<String, String> {
+    log::info!("generate_story_text: genre={}, hint={:?}", genre_name, title_hint);
     let client = OllamaClient::new();
     let system = prompts::build_system_prompt(&genre_name, &genre_description);
     let prompt = prompts::build_story_prompt(title_hint.as_deref());
 
     client
-        .generate_streaming("gemma3", &system, &prompt, &on_token)
+        .generate_streaming("gemma3:4b", &system, &prompt, &on_token)
         .await
 }
 
@@ -29,24 +30,37 @@ pub async fn continue_story(
     part_number: i32,
     on_token: Channel<StoryToken>,
 ) -> Result<String, String> {
+    log::info!(
+        "continue_story: genre={}, part={}, previous_text_len={}",
+        genre_name,
+        part_number,
+        previous_text.len()
+    );
     let client = OllamaClient::new();
 
     // First, summarize the previous text
+    log::info!("continue_story: summarizing previous text ({} chars)", previous_text.len());
     let summary_prompt = prompts::build_summary_prompt(&previous_text);
     let summary = client
         .generate(
-            "gemma3",
+            "gemma3:4b",
             "You are a helpful assistant. Summarize concisely.",
             &summary_prompt,
         )
-        .await?;
+        .await
+        .map_err(|e| {
+            log::error!("continue_story: summary generation failed: {}", e);
+            e
+        })?;
+
+    log::info!("continue_story: summary generated ({} chars), generating continuation", summary.len());
 
     // Then generate continuation
     let system = prompts::build_system_prompt(&genre_name, &genre_description);
     let prompt = prompts::build_continuation_prompt(&summary, part_number);
 
     client
-        .generate_streaming("gemma3", &system, &prompt, &on_token)
+        .generate_streaming("gemma3:4b", &system, &prompt, &on_token)
         .await
 }
 

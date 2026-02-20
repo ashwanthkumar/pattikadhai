@@ -1,4 +1,5 @@
 use futures_util::StreamExt;
+use log;
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 
@@ -42,6 +43,14 @@ impl OllamaClient {
         prompt: &str,
         channel: &Channel<StoryToken>,
     ) -> Result<String, String> {
+        let url = format!("{}/api/generate", self.base_url);
+        log::info!(
+            "Ollama streaming request: model={}, prompt_len={}, system_len={}",
+            model,
+            prompt.len(),
+            system.len()
+        );
+
         let request = OllamaGenerateRequest {
             model: model.to_string(),
             prompt: prompt.to_string(),
@@ -51,22 +60,38 @@ impl OllamaClient {
 
         let response = self
             .client
-            .post(format!("{}/api/generate", self.base_url))
+            .post(&url)
             .json(&request)
             .send()
             .await
-            .map_err(|e| format!("Failed to connect to Ollama: {}", e))?;
+            .map_err(|e| {
+                log::error!("Ollama connection failed: {}", e);
+                format!("Failed to connect to Ollama: {}", e)
+            })?;
 
-        if !response.status().is_success() {
-            return Err(format!("Ollama returned status: {}", response.status()));
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            log::error!("Ollama returned status {}: {}", status, body);
+            return Err(format!(
+                "Ollama returned status {}: {}",
+                status,
+                body.chars().take(500).collect::<String>()
+            ));
         }
+
+        log::debug!("Ollama streaming response started (status {})", status);
 
         let mut full_text = String::new();
         let mut stream = response.bytes_stream();
         let mut buffer = String::new();
+        let mut chunk_count: u32 = 0;
 
         while let Some(chunk_result) = stream.next().await {
-            let chunk = chunk_result.map_err(|e| format!("Stream error: {}", e))?;
+            let chunk = chunk_result.map_err(|e| {
+                log::error!("Ollama stream error after {} chunks: {}", chunk_count, e);
+                format!("Stream error after {} chunks: {}", chunk_count, e)
+            })?;
             let chunk_str = String::from_utf8_lossy(&chunk);
             buffer.push_str(&chunk_str);
 
@@ -79,6 +104,7 @@ impl OllamaClient {
                     continue;
                 }
 
+                chunk_count += 1;
                 match serde_json::from_str::<OllamaStreamChunk>(&line) {
                     Ok(parsed) => {
                         if let Some(ref token) = parsed.response {
@@ -89,51 +115,129 @@ impl OllamaClient {
                             });
                         }
                         if parsed.done {
+                            log::info!(
+                                "Ollama streaming complete: {} chunks, {} chars generated",
+                                chunk_count,
+                                full_text.len()
+                            );
                             let _ = channel.send(StoryToken {
                                 token: String::new(),
                                 done: true,
                             });
                         }
                     }
-                    Err(_) => {
-                        // Skip malformed JSON lines
+                    Err(e) => {
+                        log::warn!(
+                            "Ollama malformed JSON chunk #{}: {} (line: {})",
+                            chunk_count,
+                            e,
+                            line.chars().take(200).collect::<String>()
+                        );
                         continue;
                     }
                 }
             }
         }
 
+        if full_text.is_empty() {
+            log::warn!("Ollama streaming produced empty response after {} chunks", chunk_count);
+        }
+
         Ok(full_text)
     }
 
-    /// Non-streaming generation for summaries
+    /// Streaming generation that collects text internally (no channel).
+    /// Used for summaries and other internal calls.
     pub async fn generate(&self, model: &str, system: &str, prompt: &str) -> Result<String, String> {
+        let url = format!("{}/api/generate", self.base_url);
+        log::info!(
+            "Ollama generate request: model={}, prompt_len={}, system_len={}",
+            model,
+            prompt.len(),
+            system.len()
+        );
+
         let request = OllamaGenerateRequest {
             model: model.to_string(),
             prompt: prompt.to_string(),
             system: system.to_string(),
-            stream: false,
+            stream: true,
         };
 
         let response = self
             .client
-            .post(format!("{}/api/generate", self.base_url))
+            .post(&url)
             .json(&request)
             .send()
             .await
-            .map_err(|e| format!("Failed to connect to Ollama: {}", e))?;
+            .map_err(|e| {
+                log::error!("Ollama connection failed: {}", e);
+                format!("Failed to connect to Ollama: {}", e)
+            })?;
 
-        #[derive(Deserialize)]
-        struct OllamaResponse {
-            response: String,
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            log::error!("Ollama returned status {}: {}", status, body);
+            return Err(format!(
+                "Ollama returned status {}: {}",
+                status,
+                body.chars().take(500).collect::<String>()
+            ));
         }
 
-        let result: OllamaResponse = response
-            .json()
-            .await
-            .map_err(|e| format!("Failed to parse Ollama response: {}", e))?;
+        let mut full_text = String::new();
+        let mut stream = response.bytes_stream();
+        let mut buffer = String::new();
+        let mut chunk_count: u32 = 0;
 
-        Ok(result.response)
+        while let Some(chunk_result) = stream.next().await {
+            let chunk = chunk_result.map_err(|e| {
+                log::error!("Ollama stream error after {} chunks: {}", chunk_count, e);
+                format!("Stream error after {} chunks: {}", chunk_count, e)
+            })?;
+            let chunk_str = String::from_utf8_lossy(&chunk);
+            buffer.push_str(&chunk_str);
+
+            while let Some(newline_pos) = buffer.find('\n') {
+                let line = buffer[..newline_pos].trim().to_string();
+                buffer = buffer[newline_pos + 1..].to_string();
+
+                if line.is_empty() {
+                    continue;
+                }
+
+                chunk_count += 1;
+                match serde_json::from_str::<OllamaStreamChunk>(&line) {
+                    Ok(parsed) => {
+                        if let Some(ref token) = parsed.response {
+                            full_text.push_str(token);
+                        }
+                        if parsed.done {
+                            log::info!(
+                                "Ollama generate complete: {} chunks, {} chars",
+                                chunk_count,
+                                full_text.len()
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "Ollama malformed JSON chunk #{}: {} (line: {})",
+                            chunk_count,
+                            e,
+                            line.chars().take(200).collect::<String>()
+                        );
+                    }
+                }
+            }
+        }
+
+        if full_text.is_empty() {
+            log::warn!("Ollama generate produced empty response after {} chunks", chunk_count);
+        }
+
+        Ok(full_text)
     }
 }
 
