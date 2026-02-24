@@ -50,7 +50,7 @@ pub async fn start_audio_generation(
             .process(&job_id_clone, &part_id_clone, &text, &app_clone, voice_settings.as_ref())
             .await
         {
-            Ok(final_path) => {
+            Ok(result) => {
                 if let Ok(conn) = Connection::open(&db_path) {
                     let _ = queries::update_audio_job_status(
                         &conn,
@@ -62,13 +62,13 @@ pub async fn start_audio_generation(
                         &conn,
                         &job_id_clone,
                         None,
-                        Some(&final_path),
+                        Some(&result.audio_path),
                     );
                     let _ = queries::update_story_part_audio(
                         &conn,
                         &part_id_clone,
                         "audio_ready",
-                        Some(&final_path),
+                        Some(&result.audio_path),
                     );
                 }
             }

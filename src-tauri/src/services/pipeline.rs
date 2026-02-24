@@ -1,61 +1,8 @@
 use std::path::PathBuf;
 
 use crate::db::queries::VoiceSettings;
-use crate::services::mixer::AudioMixer;
 use crate::services::tts::TtsService;
 use tauri::Emitter;
-
-const CHUNK_SIZE: usize = 800;
-
-/// Merge paragraphs into chunks of approximately `CHUNK_SIZE` characters.
-/// Oversized paragraphs are split at sentence boundaries.
-fn chunk_text(text: &str) -> Vec<String> {
-    let paragraphs: Vec<&str> = text.split("\n\n").filter(|p| !p.trim().is_empty()).collect();
-    let mut chunks: Vec<String> = Vec::new();
-    let mut current = String::new();
-
-    for para in paragraphs {
-        let para = para.trim();
-        if para.len() > CHUNK_SIZE {
-            // Flush current buffer first
-            if !current.is_empty() {
-                chunks.push(current.clone());
-                current.clear();
-            }
-            // Split oversized paragraph at sentence boundaries
-            let mut sentence_buf = String::new();
-            for sentence in split_sentences(para) {
-                if !sentence_buf.is_empty() && sentence_buf.len() + sentence.len() + 1 > CHUNK_SIZE {
-                    chunks.push(sentence_buf.clone());
-                    sentence_buf.clear();
-                }
-                if !sentence_buf.is_empty() {
-                    sentence_buf.push(' ');
-                }
-                sentence_buf.push_str(sentence);
-            }
-            if !sentence_buf.is_empty() {
-                chunks.push(sentence_buf);
-            }
-        } else if !current.is_empty() && current.len() + para.len() + 2 > CHUNK_SIZE {
-            chunks.push(current.clone());
-            current.clear();
-            current.push_str(para);
-        } else {
-            if !current.is_empty() {
-                current.push_str("\n\n");
-            }
-            current.push_str(para);
-        }
-    }
-    if !current.is_empty() {
-        chunks.push(current);
-    }
-    if chunks.is_empty() && !text.trim().is_empty() {
-        chunks.push(text.trim().to_string());
-    }
-    chunks
-}
 
 /// Naive sentence splitter: split on ". ", "! ", "? " keeping the delimiter with the preceding text.
 fn split_sentences(text: &str) -> Vec<&str> {
@@ -87,6 +34,28 @@ pub struct PipelineProgress {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SentenceAudio {
+    pub job_id: String,
+    pub index: usize,
+    pub total: usize,
+    pub text: String,
+    pub wav_path: String,
+    pub duration_secs: f64,
+}
+
+pub struct PipelineResult {
+    pub audio_path: String,
+    pub timing_path: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TimingSegment {
+    pub text: String,
+    pub start: f64,
+    pub end: f64,
+}
+
 impl AudioPipeline {
     pub fn new(audio_dir: PathBuf, models_dir: PathBuf) -> Self {
         Self {
@@ -95,7 +64,7 @@ impl AudioPipeline {
         }
     }
 
-    /// Run the voice-only audio pipeline for a story part
+    /// Run the voice-only audio pipeline for a story part with per-sentence streaming.
     pub async fn process(
         &self,
         job_id: &str,
@@ -103,10 +72,15 @@ impl AudioPipeline {
         text: &str,
         app_handle: &tauri::AppHandle,
         voice_settings: Option<&VoiceSettings>,
-    ) -> Result<String, String> {
+    ) -> Result<PipelineResult, String> {
         let final_path = self
             .audio_dir
             .join(format!("{}_final.wav", part_id))
+            .to_string_lossy()
+            .to_string();
+        let timing_path = self
+            .audio_dir
+            .join(format!("{}_timing.json", part_id))
             .to_string_lossy()
             .to_string();
 
@@ -115,47 +89,132 @@ impl AudioPipeline {
             .await
             .map_err(|e| format!("Failed to create audio dir: {}", e))?;
 
-        // Emit voice generation start
+        // Extract voice settings
+        let voice_name = voice_settings.map(|vs| vs.voice.as_str());
+        let speed = voice_settings.and_then(|vs| vs.speed);
+
+        // Split text into sentences
+        let sentences = split_sentences(text);
+        let total = sentences.len();
+
+        // Emit start with total sentence count
         let _ = app_handle.emit(
             "audio-progress",
             PipelineProgress {
                 job_id: job_id.to_string(),
                 stage: "voice_generating".to_string(),
-                progress: 0.1,
+                progress: 0.0,
                 error: None,
             },
         );
 
-        // Extract voice settings
-        let voice_name = voice_settings.map(|vs| vs.voice.as_str());
-        let speed = voice_settings.and_then(|vs| vs.speed);
+        let mut all_samples: Vec<f32> = Vec::new();
+        let mut timing_segments: Vec<TimingSegment> = Vec::new();
+        let mut sentence_wav_paths: Vec<String> = Vec::new();
+        let mut cumulative_secs: f64 = 0.0;
+        let mut sample_rate: u32 = 24000;
 
-        // Merge paragraphs into ~800-char chunks
-        let chunks = chunk_text(text);
-
-        if chunks.len() > 1 {
-            let mut wav_paths = Vec::new();
-            for (i, chunk) in chunks.iter().enumerate() {
-                let chunk_path = self
-                    .audio_dir
-                    .join(format!("{}_chunk_{}.wav", part_id, i))
-                    .to_string_lossy()
-                    .to_string();
-                self.tts.generate(chunk, &chunk_path, voice_name, speed).await?;
-                wav_paths.push(chunk_path);
+        for (i, sentence_text) in sentences.iter().enumerate() {
+            let sentence_text = sentence_text.trim();
+            if sentence_text.is_empty() {
+                continue;
             }
 
-            // Concat all chunks into final_path
-            let refs: Vec<&str> = wav_paths.iter().map(|s| s.as_str()).collect();
-            AudioMixer::concat_wav(&refs, &final_path).await?;
+            // Generate raw audio for this sentence
+            let raw = self
+                .tts
+                .generate_raw(sentence_text, voice_name, speed)
+                .await?;
+            sample_rate = raw.sample_rate;
 
-            // Clean up chunk files
-            for path in &wav_paths {
-                let _ = tokio::fs::remove_file(path).await;
-            }
-        } else {
-            // Single chunk: TTS writes directly to final_path
-            self.tts.generate(text, &final_path, voice_name, speed).await?;
+            // Save per-sentence WAV
+            let sent_wav_path = self
+                .audio_dir
+                .join(format!("{}_sent_{}.wav", part_id, i))
+                .to_string_lossy()
+                .to_string();
+
+            let path_for_save = sent_wav_path.clone();
+            let samples_for_save = raw.samples.clone();
+            let sr = raw.sample_rate;
+            tokio::task::spawn_blocking(move || {
+                kokoro_tts::audio::save_wav(
+                    std::path::Path::new(&path_for_save),
+                    &samples_for_save,
+                    sr,
+                )
+                .map_err(|e| format!("Failed to save sentence WAV: {}", e))
+            })
+            .await
+            .map_err(|e| format!("Save WAV task panicked: {}", e))??;
+
+            sentence_wav_paths.push(sent_wav_path.clone());
+
+            // Build timing segment
+            let start = cumulative_secs;
+            cumulative_secs += raw.duration_secs;
+            timing_segments.push(TimingSegment {
+                text: sentence_text.to_string(),
+                start,
+                end: cumulative_secs,
+            });
+
+            // Accumulate samples for final WAV
+            all_samples.extend_from_slice(&raw.samples);
+
+            // Emit per-sentence event
+            let _ = app_handle.emit(
+                "audio-sentence",
+                SentenceAudio {
+                    job_id: job_id.to_string(),
+                    index: i,
+                    total,
+                    text: sentence_text.to_string(),
+                    wav_path: sent_wav_path,
+                    duration_secs: raw.duration_secs,
+                },
+            );
+
+            // Emit progress update
+            let progress = (i + 1) as f32 / total as f32;
+            let _ = app_handle.emit(
+                "audio-progress",
+                PipelineProgress {
+                    job_id: job_id.to_string(),
+                    stage: "voice_generating".to_string(),
+                    progress,
+                    error: None,
+                },
+            );
+        }
+
+        // Write final concatenated WAV from accumulated samples
+        {
+            let final_path_clone = final_path.clone();
+            let samples = all_samples;
+            let sr = sample_rate;
+            tokio::task::spawn_blocking(move || {
+                kokoro_tts::audio::save_wav(
+                    std::path::Path::new(&final_path_clone),
+                    &samples,
+                    sr,
+                )
+                .map_err(|e| format!("Failed to save final WAV: {}", e))
+            })
+            .await
+            .map_err(|e| format!("Save final WAV task panicked: {}", e))??;
+        }
+
+        // Write timing JSON sidecar
+        let timing_json = serde_json::to_string_pretty(&timing_segments)
+            .map_err(|e| format!("Failed to serialize timing: {}", e))?;
+        tokio::fs::write(&timing_path, timing_json)
+            .await
+            .map_err(|e| format!("Failed to write timing JSON: {}", e))?;
+
+        // Clean up per-sentence WAV files
+        for path in &sentence_wav_paths {
+            let _ = tokio::fs::remove_file(path).await;
         }
 
         // Emit completion
@@ -169,7 +228,10 @@ impl AudioPipeline {
             },
         );
 
-        Ok(final_path)
+        Ok(PipelineResult {
+            audio_path: final_path,
+            timing_path,
+        })
     }
 }
 
@@ -192,50 +254,23 @@ mod tests {
     }
 
     #[test]
-    fn chunk_text_single_short_paragraph() {
-        let chunks = chunk_text("Hello world.");
-        assert_eq!(chunks, vec!["Hello world."]);
+    fn split_sentences_basic() {
+        let sentences = split_sentences("Hello world. How are you? I am fine!");
+        assert_eq!(sentences.len(), 3);
+        assert_eq!(sentences[0], "Hello world.");
+        assert_eq!(sentences[1], "How are you?");
+        assert_eq!(sentences[2], "I am fine!");
     }
 
     #[test]
-    fn chunk_text_merges_small_paragraphs() {
-        let text = "Para one.\n\nPara two.\n\nPara three.";
-        let chunks = chunk_text(text);
-        assert_eq!(chunks.len(), 1);
-        assert!(chunks[0].contains("Para one."));
-        assert!(chunks[0].contains("Para three."));
+    fn split_sentences_no_trailing_space() {
+        let sentences = split_sentences("One sentence.");
+        assert_eq!(sentences, vec!["One sentence."]);
     }
 
     #[test]
-    fn chunk_text_splits_at_size_boundary() {
-        // Create paragraphs that together exceed CHUNK_SIZE
-        let para = "A".repeat(1200);
-        let text = format!("{}\n\n{}", para, para);
-        let chunks = chunk_text(&text);
-        assert_eq!(chunks.len(), 2);
-    }
-
-    #[test]
-    fn chunk_text_splits_oversized_paragraph() {
-        // Single paragraph > CHUNK_SIZE with sentence boundaries
-        let sentence = "This is a sentence. ";
-        let big_para = sentence.repeat(150); // ~3000 chars
-        let chunks = chunk_text(&big_para);
-        assert!(chunks.len() >= 2);
-        for chunk in &chunks {
-            assert!(chunk.len() <= CHUNK_SIZE + 100); // some tolerance
-        }
-    }
-
-    #[test]
-    fn chunk_text_empty_input() {
-        let chunks = chunk_text("");
-        assert!(chunks.is_empty());
-    }
-
-    #[test]
-    fn chunk_text_whitespace_only() {
-        let chunks = chunk_text("   \n\n   ");
-        assert!(chunks.is_empty());
+    fn split_sentences_empty() {
+        let sentences = split_sentences("");
+        assert!(sentences.is_empty());
     }
 }

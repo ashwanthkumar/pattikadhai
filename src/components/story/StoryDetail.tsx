@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   ArrowLeft,
   ChevronDown,
@@ -9,17 +9,22 @@ import {
   Check,
   X,
   Loader2,
+  Pause,
+  Play,
 } from "lucide-react";
-import { getAudioUrl } from "@/lib/audio";
+import { getAudioUrl, invalidateAudioUrl } from "@/lib/audio";
 import { cn } from "@/lib/utils";
 import { useStory, useStoryParts, useGenres } from "@/hooks/useDatabase";
 import { useStoryGeneration } from "@/hooks/useStoryGeneration";
 import { useAudioGeneration } from "@/hooks/useAudioGeneration";
+import { useStreamingAudio } from "@/hooks/useStreamingAudio";
+import { useAudioHighlight } from "@/hooks/useAudioHighlight";
+import { loadTimingData, type TimingSegment } from "@/lib/timing";
+import { HighlightedText } from "@/components/story/HighlightedText";
 import {
   updateStoryPartContent,
   createStoryPart,
 } from "@/lib/database";
-import { AUDIO_STAGES } from "@/lib/constants";
 import type { StoryPart } from "@/types";
 
 interface StoryDetailProps {
@@ -42,10 +47,15 @@ export function StoryDetail({ storyId, onBack }: StoryDetailProps) {
     stage: audioStage,
     progress: audioProgress,
     error: audioError,
+    jobId: audioJobId,
     startGeneration,
     reset: _resetAudio,
   } = useAudioGeneration();
   const [audioPartId, setAudioPartId] = useState<string | null>(null);
+  const [audioGenCounter, setAudioGenCounter] = useState(0);
+
+  // Streaming audio playback
+  const streaming = useStreamingAudio(audioJobId);
 
   // Auto-expand all parts once loaded
   useEffect(() => {
@@ -54,12 +64,21 @@ export function StoryDetail({ storyId, onBack }: StoryDetailProps) {
     }
   }, [parts]);
 
-  // Re-fetch parts when audio generation completes so audio_path is available
+  // Re-fetch parts when audio generation completes so audio_path is available.
+  // Also invalidate the blob URL cache for the regenerated part's audio so
+  // the replay player loads the fresh file instead of the stale cached blob.
   useEffect(() => {
     if (audioStage === "complete") {
+      if (audioPartId) {
+        const part = parts.find((p) => p.id === audioPartId);
+        if (part?.audio_path) {
+          invalidateAudioUrl(part.audio_path);
+        }
+      }
+      setAudioGenCounter((c) => c + 1);
       refreshParts();
     }
-  }, [audioStage, refreshParts]);
+  }, [audioStage, refreshParts, audioPartId, parts]);
 
   // Continuation generation state
   const {
@@ -89,7 +108,6 @@ export function StoryDetail({ storyId, onBack }: StoryDetailProps) {
   const startEditing = (part: StoryPart) => {
     setEditingPartId(part.id);
     setEditText(part.content);
-    // Ensure the part is expanded
     setExpandedParts((prev) => new Set(prev).add(part.id));
   };
 
@@ -214,8 +232,9 @@ export function StoryDetail({ storyId, onBack }: StoryDetailProps) {
         {parts.map((part) => {
           const isExpanded = expandedParts.has(part.id);
           const isEditing = editingPartId === part.id;
-          const isAudioGenerating =
+          const isThisPartGenerating =
             audioPartId === part.id && audioStage !== "idle" && audioStage !== "complete" && audioStage !== "failed";
+          const isStreamingThisPart = isThisPartGenerating && streaming.sentences.length > 0;
 
           return (
             <div
@@ -309,18 +328,62 @@ export function StoryDetail({ storyId, onBack }: StoryDetailProps) {
                     </div>
                   ) : (
                     <div className="flex flex-col gap-4">
-                      {/* Text content */}
-                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-card-foreground">
-                        {part.content}
-                      </p>
-
-                      {/* Audio player */}
-                      {part.audio_path && (
-                        <AudioPlayer path={part.audio_path} />
+                      {/* Text content — streaming mode with highlighting */}
+                      {isStreamingThisPart ? (
+                        <>
+                          <HighlightedText
+                            segments={streaming.sentences.map((s) => ({ text: s.text }))}
+                            activeIndex={streaming.activeIndex}
+                            fallbackContent={part.content}
+                          />
+                          {/* Streaming playback controls */}
+                          <div className="flex items-center gap-3 rounded-lg bg-secondary/50 p-3">
+                            <button
+                              onClick={streaming.isPlaying ? streaming.pause : streaming.play}
+                              className={cn(
+                                "flex h-8 w-8 items-center justify-center rounded-full",
+                                "bg-primary text-primary-foreground",
+                                "transition-colors hover:bg-primary/90",
+                              )}
+                            >
+                              {streaming.isPlaying ? (
+                                <Pause className="h-3.5 w-3.5" />
+                              ) : (
+                                <Play className="h-3.5 w-3.5 ml-0.5" />
+                              )}
+                            </button>
+                            <div className="flex flex-col gap-1">
+                              <span className="text-xs font-medium text-foreground">
+                                {streaming.isBuffering
+                                  ? "Buffering..."
+                                  : streaming.isPlaying
+                                    ? `Playing sentence ${streaming.activeIndex + 1}`
+                                    : streaming.state === "complete"
+                                      ? "Playback complete"
+                                      : "Paused"}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground">
+                                {streaming.sentences.length} sentences ready
+                              </span>
+                            </div>
+                          </div>
+                        </>
+                      ) : part.audio_path ? (
+                        /* Replay mode — audio_ready with highlighting */
+                        <ReplayPartContent
+                          key={`${part.id}-${audioGenCounter}`}
+                          content={part.content}
+                          audioPath={part.audio_path}
+                        />
+                      ) : (
+                        /* Plain text — no audio */
+                        <p className="whitespace-pre-wrap text-sm leading-relaxed text-card-foreground">
+                          {part.content}
+                        </p>
                       )}
 
-                      {/* Audio generation progress */}
-                      {isAudioGenerating && (
+                      {/* Audio generation progress (non-streaming indicator) */}
+                      {isThisPartGenerating && !isStreamingThisPart && (
                         <div className="flex flex-col gap-2 rounded-lg bg-secondary/50 p-3">
                           <div className="flex items-center gap-2">
                             <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
@@ -328,26 +391,11 @@ export function StoryDetail({ storyId, onBack }: StoryDetailProps) {
                               Generating audio...
                             </span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            {AUDIO_STAGES.map((s) => (
-                              <span
-                                key={s.key}
-                                className={cn(
-                                  "text-[10px] font-medium px-2 py-0.5 rounded-full",
-                                  audioStage === s.key
-                                    ? "bg-primary text-primary-foreground"
-                                    : "text-muted-foreground",
-                                )}
-                              >
-                                {s.label}
-                              </span>
-                            ))}
-                          </div>
                           {audioProgress > 0 && (
                             <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                               <div
                                 className="h-full rounded-full bg-primary transition-all duration-300"
-                                style={{ width: `${audioProgress}%` }}
+                                style={{ width: `${audioProgress * 100}%` }}
                               />
                             </div>
                           )}
@@ -375,7 +423,7 @@ export function StoryDetail({ storyId, onBack }: StoryDetailProps) {
                           Edit
                         </button>
 
-                        {(part.status === "text_ready" || part.status === "audio_failed" || part.status === "audio_ready") && !isAudioGenerating && (
+                        {(part.status === "text_ready" || part.status === "audio_failed" || part.status === "audio_ready") && !isThisPartGenerating && (
                           <button
                             onClick={() => handleGenerateAudio(part)}
                             className={cn(
@@ -484,19 +532,46 @@ export function StoryDetail({ storyId, onBack }: StoryDetailProps) {
   );
 }
 
-function AudioPlayer({ path }: { path: string }) {
+/** Replay mode: loads timing data and shows highlighted text with audio controls. */
+function ReplayPartContent({ content, audioPath }: { content: string; audioPath: string }) {
+  const [timingSegments, setTimingSegments] = useState<TimingSegment[] | null>(null);
+  const [timingLoaded, setTimingLoaded] = useState(false);
   const [src, setSrc] = useState<string | null>(null);
 
-  useEffect(() => {
-    getAudioUrl(path).then(setSrc);
-  }, [path]);
+  const { activeIndex, bindAudio } = useAudioHighlight(timingSegments);
 
-  if (!src) return null;
+  useEffect(() => {
+    loadTimingData(audioPath).then((segments) => {
+      setTimingSegments(segments);
+      setTimingLoaded(true);
+    });
+    getAudioUrl(audioPath).then(setSrc);
+  }, [audioPath]);
+
+  const audioRefCallback = useCallback(
+    (el: HTMLAudioElement | null) => {
+      bindAudio(el);
+    },
+    [bindAudio],
+  );
+
+  const segments = timingLoaded && timingSegments
+    ? timingSegments.map((s) => ({ text: s.text }))
+    : null;
 
   return (
-    <div className="flex flex-col gap-1">
-      <span className="text-xs font-medium text-muted-foreground">Audio</span>
-      <audio controls src={src} className="w-full" />
-    </div>
+    <>
+      <HighlightedText
+        segments={segments}
+        activeIndex={activeIndex}
+        fallbackContent={content}
+      />
+      {src && (
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted-foreground">Audio</span>
+          <audio ref={audioRefCallback} controls src={src} className="w-full" />
+        </div>
+      )}
+    </>
   );
 }

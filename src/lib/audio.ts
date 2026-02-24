@@ -16,3 +16,15 @@ export async function getAudioUrl(filePath: string): Promise<string> {
   blobUrlCache.set(filePath, url);
   return url;
 }
+
+/**
+ * Evict a cached blob URL so the next getAudioUrl call re-reads the file.
+ * Call this before regenerating audio for a path that may already be cached.
+ */
+export function invalidateAudioUrl(filePath: string): void {
+  const cached = blobUrlCache.get(filePath);
+  if (cached) {
+    URL.revokeObjectURL(cached);
+    blobUrlCache.delete(filePath);
+  }
+}

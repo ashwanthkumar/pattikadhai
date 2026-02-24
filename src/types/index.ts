@@ -67,6 +67,15 @@ export interface PipelineProgress {
   error: string | null;
 }
 
+export interface SentenceAudioEvent {
+  job_id: string;
+  index: number;
+  total: number;
+  text: string;
+  wav_path: string;
+  duration_secs: number;
+}
+
 export type Page =
   | "library"
   | "create"

@@ -7,6 +7,12 @@ use kokoro_tts::Kokoro;
 /// Wraps in Result so initialization failures can be retried.
 static KOKORO: OnceLock<Result<Mutex<Kokoro>, String>> = OnceLock::new();
 
+pub struct TtsRawResult {
+    pub samples: Vec<f32>,
+    pub sample_rate: u32,
+    pub duration_secs: f64,
+}
+
 pub struct TtsService {
     models_dir: PathBuf,
 }
@@ -48,25 +54,20 @@ impl TtsService {
         result.as_ref().map_err(|e| e.clone())
     }
 
-    /// Generate speech audio from text using Kokoro-82M.
-    pub async fn generate(
+    /// Generate raw audio samples without writing to disk.
+    pub async fn generate_raw(
         &self,
         text: &str,
-        output_path: &str,
         voice: Option<&str>,
         speed: Option<f32>,
-    ) -> Result<String, String> {
-        let voice = voice.unwrap_or("af_nova");
+    ) -> Result<TtsRawResult, String> {
+        let voice = voice.unwrap_or("af_nova").to_string();
         let speed = speed.unwrap_or(0.5);
         let text = text.to_string();
-        let voice = voice.to_string();
-        let output_path = output_path.to_string();
 
         let kokoro_mutex = self.get_kokoro()?;
 
-        // ONNX inference is synchronous — run on a blocking thread
         tokio::task::spawn_blocking(move || {
-            let input_chars = text.len();
             let start = std::time::Instant::now();
 
             let mut kokoro = kokoro_mutex
@@ -78,18 +79,19 @@ impl TtsService {
                 .map_err(|e| format!("TTS generation failed: {}", e))?;
 
             let elapsed = start.elapsed();
+            let duration_secs = audio.samples.len() as f64 / audio.sample_rate as f64;
             log::info!(
-                "TTS generated: {} input chars in {:.2}s",
-                input_chars,
+                "TTS raw generated: {} chars, {:.2}s audio in {:.2}s",
+                text.len(),
+                duration_secs,
                 elapsed.as_secs_f64()
             );
 
-            let path = std::path::Path::new(&output_path);
-            audio
-                .save_wav(path)
-                .map_err(|e| format!("Failed to save WAV: {}", e))?;
-
-            Ok(output_path)
+            Ok(TtsRawResult {
+                samples: audio.samples,
+                sample_rate: audio.sample_rate,
+                duration_secs,
+            })
         })
         .await
         .map_err(|e| format!("TTS task panicked: {}", e))?
